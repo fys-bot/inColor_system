@@ -1,0 +1,115 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>LingoSync AI Backend</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind Configuration -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'primary': '#3b82f6',
+              'primary-hover': '#2563eb',
+              'primary-light': '#eff6ff',
+              'danger': '#ef4444',
+              'danger-hover': '#dc2626',
+              'accent': '#ec4899',
+              'gray-900': '#111827',
+              'gray-800': '#1f2937',
+              'gray-700': '#374151',
+              'gray-600': '#4b5563',
+              'gray-500': '#6b7280',
+              'gray-400': '#9ca3af',
+              'gray-300': '#d1d5db',
+              'gray-200': '#e5e7eb',
+              'gray-100': '#f3f4f6',
+              'gray-50': '#f9fafb',
+            },
+            animation: {
+              'fade-in-up': 'fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'modal-pop': 'modalPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+              'spin-slow': 'spin 3s linear infinite',
+            },
+            keyframes: {
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px) scale(0.98)' },
+                '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+              },
+              modalPop: {
+                '0%': { opacity: '0', transform: 'scale(0.95)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Import Map -->
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.20.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.418.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.2.1",
+    "jszip": "https://esm.sh/jszip@^3.10.1"
+  }
+}
+</script>
+    <style>
+      /* Global Smooth Scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+      
+      /* Hide Scrollbar but allow scrolling */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Custom Stagger Animation for Lists */
+      .stagger-item {
+        opacity: 0;
+        animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .stagger-item:nth-child(1) { animation-delay: 0.05s; }
+      .stagger-item:nth-child(2) { animation-delay: 0.1s; }
+      .stagger-item:nth-child(3) { animation-delay: 0.15s; }
+      .stagger-item:nth-child(4) { animation-delay: 0.2s; }
+      .stagger-item:nth-child(5) { animation-delay: 0.25s; }
+      .stagger-item:nth-child(6) { animation-delay: 0.3s; }
+      .stagger-item:nth-child(7) { animation-delay: 0.35s; }
+      .stagger-item:nth-child(8) { animation-delay: 0.4s; }
+      .stagger-item:nth-child(9) { animation-delay: 0.45s; }
+      .stagger-item:nth-child(10) { animation-delay: 0.5s; }
+
+      /* Glassmorphism Utilities */
+      .glass {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 font-sans antialiased text-gray-900">
+    <div id="root"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
