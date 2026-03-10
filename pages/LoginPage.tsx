@@ -58,11 +58,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="flex flex-col items-center w-full px-4">
                 {/* App Logo and Title */}
-                <div className="flex items-center space-x-3 mb-8 animate-fade-in-up">
-                    <div className="bg-white rounded-xl shadow-md overflow-hidden w-16 h-16">
+                <div className="flex items-center space-x-4 mb-8 animate-fade-in-up">
+                    <div className="rounded-2xl shadow-2xl overflow-hidden w-20 h-20 flex items-center justify-center">
                         <AppLogoIcon className="w-full h-full" />
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Incolor 后台管理系统</h1>
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Incolor</h1>
+                        <p className="text-sm text-gray-500 font-medium">后台管理系统</p>
+                    </div>
                 </div>
                 
                 {/* Login Form Card */}

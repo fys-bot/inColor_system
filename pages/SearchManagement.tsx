@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { SearchTerm } from '../types';
+import { SearchTerm, AIModelConfig, AIGenerationStyle } from '../types';
 import * as Icons from '../components/shared/Icons';
+import { API_BASE } from '../utils/api';
 import Spinner from '../components/shared/Spinner';
 import DatePicker from '../components/shared/DatePicker';
 import { useToast } from '../context/ToastContext';
@@ -10,12 +10,14 @@ import Tooltip from '../components/shared/Tooltip';
 
 interface SearchManagementProps {
     searchTerms: SearchTerm[];
+    aiModelConfig: AIModelConfig;
+    generationStyles: AIGenerationStyle[];
 }
 
 const STORAGE_KEY = 'incolor_search_translations_v1';
 const MAX_CONCURRENT_TRANSLATIONS = 10;
 
-const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initialSearchTerms }) => {
+const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initialSearchTerms, aiModelConfig, generationStyles }) => {
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState<'hot' | 'scarce'>('hot');
     const [loading, setLoading] = useState(false);
@@ -67,12 +69,10 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
         setLoading(true);
         try {
             const endpoint = tab === 'hot' ? 'h' : 'rarity';
-            const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/history/${endpoint}`, {
+            const res = await fetch(`${API_BASE}/api/history/${endpoint}`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ limit: 1000 }), // Increased limit to support pagination
-                mode: "cors",
-                credentials: "omit"
+                body: JSON.stringify({ limit: 1000 }),
             }).then(r => r.json());
             
             if (res.data && Array.isArray(res.data)) {
@@ -126,11 +126,6 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
 
     // Core Translation Logic
     const performTranslation = useCallback(async (term: string) => {
-        if (!process.env.API_KEY) {
-            showToast("API Key 未配置", "error");
-            return;
-        }
-
         // Add to visual loading state
         setTranslatingIds(prev => new Set(prev).add(term));
         activeTranslationsRef.current += 1;
@@ -139,16 +134,25 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
             // Jitter: Random delay between 0-1000ms to avoid burst rate limits
             await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `Translate the following search term into Simplified Chinese. Detect the source language code (e.g., EN, JA, KO, ES). 
-                If the term is already Chinese or a proper noun that usually doesn't change, return it as is.
-                Return ONLY JSON format: {"translation": "...", "language": "CODE"}.
-                Term: "${term}"`
+            const resp = await fetch(API_BASE + '/api/ai-gateway/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{
+                        role: 'user',
+                        content: `Translate the following search term into Simplified Chinese. Detect the source language code (e.g., EN, JA, KO, ES). 
+If the term is already Chinese or a proper noun that usually doesn't change, return it as is.
+Return ONLY JSON format: {"translation": "...", "language": "CODE"}.
+Term: "${term}"`
+                    }],
+                    _endpoint: '/v1/chat/completions',
+                }),
             });
+            const data = await resp.json();
+            if (data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
             
-            const text = response.text;
+            const text = data.choices?.[0]?.message?.content || '';
             // Robust JSON extraction
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             
@@ -167,8 +171,6 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
             // Check for 429 (Too Many Requests)
             if (error.message?.includes('429') || error.status === 429) {
                 console.warn(`Rate limit hit for ${term}. Cooling down slot.`);
-                // If rate limited, we hold this slot occupied for 10 seconds to allow cooldown, 
-                // then release it so it can be retried later (by not updating 'data' it remains untranslated)
                 await new Promise(resolve => setTimeout(resolve, 10000));
             }
         } finally {
@@ -279,6 +281,15 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
         return `${startStr} ~ ${endStr}`;
     }, [dateRange]);
 
+    // Build final prompt from template
+    const getPromptPreview = (subject: string) => {
+        const config = aiModelConfig?.imageGeneration;
+        const template = config?.presetPrompts?.[config?.activePresetPromptIndex ?? 0] || '';
+        if (!template) return '';
+        const style = generationStyles?.[0] || '';
+        return template.replace('{subject}', subject).replace('{style}', style);
+    };
+
     return (
         <div className="h-full flex flex-col space-y-6">
             <div className="flex-shrink-0">
@@ -303,19 +314,6 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
                 </div>
 
                 <div className="h-6 w-px bg-gray-300 mx-2 hidden md:block"></div>
-
-                <select 
-                    value={selectedLanguage} 
-                    onChange={e => setSelectedLanguage(e.target.value)}
-                    className="p-2 border border-gray-300 rounded-md text-sm bg-white text-gray-700 focus:ring-primary focus:border-primary"
-                >
-                    <option>所有语言</option>
-                    <option value="EN">English (EN)</option>
-                    <option value="JA">Japanese (JA)</option>
-                    <option value="KO">Korean (KO)</option>
-                    <option value="ES">Spanish (ES)</option>
-                    <option value="PT">Portuguese (PT)</option>
-                </select>
 
                 {dateRangeString && (
                     <div className="flex items-center text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
@@ -377,6 +375,14 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
                                     <tr>
                                         <th className="px-6 py-3 font-medium">原始关键词</th>
                                         <th className="px-6 py-3 font-medium">翻译</th>
+                                        <th className="px-6 py-3 font-medium">
+                                            <div className="flex items-center">
+                                                提示词
+                                                <Tooltip content="根据翻译结果自动填入提示词模版，{subject}=翻译词，{style}=第一个风格" position="bottom">
+                                                    <Icons.InfoIcon className="w-3.5 h-3.5 ml-1 text-gray-400 cursor-help" />
+                                                </Tooltip>
+                                            </div>
+                                        </th>
                                         <th className="px-6 py-3 font-medium">
                                             <div className="flex items-center">
                                                 搜索次数 
@@ -442,6 +448,15 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
                                                         </button>
                                                     )}
                                                 </td>
+                                                <td className="px-6 py-4">
+                                                    {hasTranslation ? (
+                                                        <Tooltip content={getPromptPreview(item.translation!)} position="bottom">
+                                                            <p className="text-xs text-gray-500 max-w-xs truncate cursor-help">{getPromptPreview(item.translation!)}</p>
+                                                        </Tooltip>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-300">翻译后生成</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-6 py-4 font-bold text-gray-900">{searchCount.toLocaleString()}</td>
                                                 <td className="px-6 py-4 text-gray-600">{item.c?.toLocaleString() || '-'}</td>
                                                 <td className="px-6 py-4 text-gray-600">{resultCount.toLocaleString()}</td>
@@ -450,7 +465,7 @@ const SearchManagement: React.FC<SearchManagementProps> = ({ searchTerms: initia
                                     })}
                                     {paginatedData.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                                            <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                                                 暂无数据
                                             </td>
                                         </tr>

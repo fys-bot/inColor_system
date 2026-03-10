@@ -10,7 +10,7 @@ import { triggerHaptic, btnClickable } from '../../utils/ux';
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | '7xl';
 }
@@ -46,11 +46,11 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
         className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidthClasses[maxWidth]} max-h-[95vh] flex flex-col transform animate-modal-pop border border-gray-100 overflow-hidden`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center border-b border-gray-100 p-5 flex-shrink-0 bg-white z-10">
-          <h3 className="text-xl font-bold text-gray-800 tracking-tight">{title}</h3>
+        <div className="flex justify-between items-center border-b border-gray-100 p-5 flex-shrink-0 bg-white z-10 gap-3">
+          <div className="text-xl font-bold text-gray-800 tracking-tight flex-1 min-w-0">{title}</div>
           <button 
             onClick={handleClose} 
-            className={`text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors ${btnClickable}`}
+            className={`flex-shrink-0 text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors ${btnClickable}`}
             aria-label="Close"
           >
             <CloseIcon className="w-5 h-5" />

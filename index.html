@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="color-scheme: light only;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -68,6 +68,29 @@
 }
 </script>
     <style>
+      /* Force light color scheme for all elements */
+      :root, html, body {
+        color-scheme: light only;
+      }
+      *, *::before, *::after {
+        color-scheme: light;
+      }
+      input, textarea, select, [contenteditable] {
+        color-scheme: light !important;
+        background-color: white !important;
+        color: #111827 !important;
+      }
+      input::placeholder, textarea::placeholder {
+        color: #9ca3af !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        input, textarea, select, [contenteditable] {
+          color-scheme: light !important;
+          background-color: white !important;
+          color: #111827 !important;
+        }
+      }
+
       /* Global Smooth Scrolling */
       html {
         scroll-behavior: smooth;

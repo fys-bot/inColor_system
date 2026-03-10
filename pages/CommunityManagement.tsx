@@ -15,6 +15,7 @@ import Spinner from '../components/shared/Spinner';
 import Tooltip from '../components/shared/Tooltip';
 import * as Icons from '../components/shared/Icons';
 import { triggerHaptic, btnClickable } from '../utils/ux';
+import { API_BASE } from '../utils/api';
 
 // 定义页面内的标签页类型
 type SubTab = 'pending' | 'processed' | 'banned';
@@ -160,27 +161,19 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     }, []);
 
     const getUserReportsData = async () => {
-        const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/user_report/load`, {
-            "headers": {
-                "accept": "*/*",
-                "content-type": "application/json",
-            },
-            "body": "{\"limit\":1000}",
-            "method": "POST",
-            "mode": "cors",
+        const res = await fetch(`${API_BASE}/api/user-report/load`, {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ limit: 1000 }),
+            method: "POST",
         }).then(r => r.json());
         return res
     }
 
     const getSystemDetectionData = async () => {
-        const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/system_detection/load`, {
-            "headers": {
-                "accept": "*/*",
-                "content-type": "application/json",
-            },
-            "body": "{\"limit\":1000}",
-            "method": "POST",
-            "mode": "cors",
+        const res = await fetch(`${API_BASE}/api/system-detection/load`, {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ limit: 1000 }),
+            method: "POST",
         }).then(r => r.json());
         return res
     }
@@ -375,16 +368,10 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     };
 
     const handleUserReportsChange = async (action, rows) => {
-        const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/user_report/update`, {
-            "headers": {
-                "accept": "*/*",
-                "content-type": "application/json",
-            },
-            "body": JSON.stringify({
-                action, rows
-            }),
-            "method": "POST",
-            "mode": "cors",
+        const res = await fetch(`${API_BASE}/api/user-report/update`, {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action, rows }),
+            method: "POST",
         }).then(r => r.json());
         return res;
     }
@@ -497,16 +484,10 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     };
 
     const handleSystemDetectionsChange = async (action, rows) => {
-        const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/system_detection/update`, {
-            "headers": {
-                "accept": "*/*",
-                "content-type": "application/json",
-            },
-            "body": JSON.stringify({
-                action, rows
-            }),
-            "method": "POST",
-            "mode": "cors",
+        const res = await fetch(`${API_BASE}/api/system-detection/update`, {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action, rows }),
+            method: "POST",
         }).then(r => r.json());
         return res;
     }

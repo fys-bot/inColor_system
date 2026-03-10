@@ -17,8 +17,4 @@ if (!rootElement) {
 
 // Create a React root and render the main App component.
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+root.render(<App />);

@@ -101,10 +101,10 @@ const AIModelManagement: React.FC<AIModelManagementProps> = ({ aiModelConfig, se
 
     try {
         const imageGenConfig = aiModelConfig.imageGeneration;
-        const activePrompt = imageGenConfig.presetPrompts?.[imageGenConfig.activePresetPromptIndex ?? 0] || '{PROMPT}';
+        const activePrompt = imageGenConfig.presetPrompts?.[imageGenConfig.activePresetPromptIndex ?? 0] || '{subject}';
         const finalPrompt = activePrompt
-            .replace('{PROMPT}', testPrompt)
-            .replace('{STYLE}', testStyle);
+            .replace('{subject}', testPrompt)
+            .replace('{style}', testStyle);
         
         setTestResult(prev => ({ ...prev, finalPrompt }));
 
@@ -239,7 +239,7 @@ const AIModelManagement: React.FC<AIModelManagementProps> = ({ aiModelConfig, se
                             }
                         }}
                         className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-primary focus:border-primary font-mono text-xs"
-                        placeholder="输入预制提示词... 使用 {PROMPT} 和 {STYLE} 作为占位符。"
+                        placeholder="输入预制提示词... 使用 {subject} 和 {style} 作为占位符。"
                     />
                     <p className="text-xs text-gray-500 mt-1">
                         这里显示的是当前激活的提示词。要管理所有提示词，请前往“批量生图工具”页面。
@@ -250,11 +250,11 @@ const AIModelManagement: React.FC<AIModelManagementProps> = ({ aiModelConfig, se
                     <div className="bg-white p-6 rounded-lg shadow-sm border space-y-4">
                         <h3 className="text-lg font-semibold text-gray-800">测试参数</h3>
                         <div>
-                            <label htmlFor="test-prompt" className="block text-sm font-medium text-gray-700 mb-1">用户提示词 <code>({'{PROMPT}'})</code></label>
+                            <label htmlFor="test-prompt" className="block text-sm font-medium text-gray-700 mb-1">用户提示词 <code>({'{subject}'})</code></label>
                             <input id="test-prompt" type="text" value={testPrompt} onChange={e => setTestPrompt(e.target.value)} className="w-full p-2 border rounded-md bg-white text-gray-900" />
                         </div>
                         <div>
-                            <label htmlFor="test-style" className="block text-sm font-medium text-gray-700 mb-1">风格 <code>({'{STYLE}'})</code></label>
+                            <label htmlFor="test-style" className="block text-sm font-medium text-gray-700 mb-1">风格 <code>({'{style}'})</code></label>
                             <select id="test-style" value={testStyle} onChange={e => setTestStyle(e.target.value as AIGenerationStyle)} className="w-full p-2 border rounded-md bg-white">
                                 {generationStyles.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>

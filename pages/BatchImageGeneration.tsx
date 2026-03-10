@@ -1,7 +1,5 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { GoogleGenAI } from "@google/genai";
-// FIX: Removed standard JS/Web API types (like Blob, AudioContext) and Gemini internal types (like Modality, Type) from the local types import as they are either global or should be handled differently.
 import { 
     SearchTerm, 
     ImageGenerationTask, 
@@ -21,6 +19,7 @@ import { useToast } from '../context/ToastContext';
 import Modal from '../components/shared/Modal';
 import ReviewAndEditModal from '../components/shared/ReviewAndEditModal';
 import { useImagePreview } from '../context/ImagePreviewContext';
+import { API_BASE } from '../utils/api';
 
 declare var JSZip: any;
 
@@ -214,6 +213,15 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [processMode, setProcessMode] = useState<'upload' | 'download'>('upload');
 
+    // 上传到素材库配置
+    const [isUploadConfigOpen, setIsUploadConfigOpen] = useState(false);
+    const [uploadConfigType, setUploadConfigType] = useState<string>('normal');
+    const [uploadConfigCategory, setUploadConfigCategory] = useState<string>('');
+    const [uploadConfigSearchTags, setUploadConfigSearchTags] = useState<string>('');
+    const [uploadConfigAdUnlock, setUploadConfigAdUnlock] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+
     // Load history
     useEffect(() => {
         loadTasksFromDB(STORE_NAME)
@@ -241,15 +249,110 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
         if (isProcessingLoaded) saveTasksToDB(STORE_NAME_PROCESSING, processingTasks);
     }, [processingTasks, isProcessingLoaded]);
 
-    // Helpers
-    const getAIClient = (): GoogleGenAI | null => {
+    // AI Gateway helpers
+    const [gatewayModels, setGatewayModels] = useState<any[]>([]);
+    const [gatewayImageModels, setGatewayImageModels] = useState<any[]>([]);
+    const [selectedChatModel, setSelectedChatModel] = useState<string>(() => {
+        try { return localStorage.getItem('batch_gen_chat_model') || 'gpt-4o'; } catch { return 'gpt-4o'; }
+    });
+    const [selectedImageModel, setSelectedImageModel] = useState<string>(() => {
+        try { return localStorage.getItem('batch_gen_image_model') || 'flux-2'; } catch { return 'flux-2'; }
+    });
+    const [chatModelDocs, setChatModelDocs] = useState<any>(null);
+    const [imageModelDocs, setImageModelDocs] = useState<any>(null);
+    const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+    // Load gateway models on mount
+    useEffect(() => {
+        // 从 localStorage 恢复缓存的配置
         try {
-            const key = process.env.API_KEY || '';
-            if (key) return new GoogleGenAI({ apiKey: key });
-        } catch (e: any) {
-            console.error("Failed to create GoogleGenAI client", e);
+            const cached = localStorage.getItem('batch_gen_settings');
+            if (cached) {
+                const settings = JSON.parse(cached);
+                if (settings.presetPrompts || settings.activePresetPromptIndex !== undefined || settings.modelName || settings.defaultSize) {
+                    setAiModelConfig(prev => ({
+                        ...prev,
+                        imageGeneration: {
+                            ...prev.imageGeneration,
+                            ...(settings.presetPrompts && { presetPrompts: settings.presetPrompts }),
+                            ...(settings.activePresetPromptIndex !== undefined && { activePresetPromptIndex: settings.activePresetPromptIndex }),
+                            ...(settings.modelName && { modelName: settings.modelName }),
+                            ...(settings.defaultSize && { defaultSize: settings.defaultSize }),
+                        }
+                    }));
+                }
+                if (settings.generationStyles) setGenerationStyles(settings.generationStyles);
+                console.log('[BatchGen] 已从缓存恢复配置');
+            }
+        } catch (e) {
+            console.warn('[BatchGen] 缓存读取失败:', e);
         }
-        return null;
+
+        const loadModels = async () => {
+            setIsLoadingModels(true);
+            try {
+                const [chatRes, imgRes] = await Promise.all([
+                    fetch(API_BASE + '/api/ai-gateway/models?type=Chat').then(r => r.json()),
+                    fetch(API_BASE + '/api/ai-gateway/models?type=Image').then(r => r.json()),
+                ]);
+                setGatewayModels(chatRes.data || []);
+                setGatewayImageModels(imgRes.data || []);
+            } catch (e) {
+                console.error('Failed to load gateway models', e);
+            }
+            setIsLoadingModels(false);
+        };
+        loadModels();
+    }, []);
+
+    // Load docs when model changes
+    useEffect(() => {
+        if (!selectedChatModel) return;
+        fetch(`${API_BASE}/api/ai-gateway/docs?model=${encodeURIComponent(selectedChatModel)}`)
+            .then(r => r.json())
+            .then(d => setChatModelDocs(d.data || null))
+            .catch(() => setChatModelDocs(null));
+    }, [selectedChatModel]);
+
+    useEffect(() => {
+        if (!selectedImageModel) return;
+        fetch(`${API_BASE}/api/ai-gateway/docs?model=${encodeURIComponent(selectedImageModel)}`)
+            .then(r => r.json())
+            .then(d => setImageModelDocs(d.data || null))
+            .catch(() => setImageModelDocs(null));
+    }, [selectedImageModel]);
+
+    // AI Gateway chat call
+    const callChat = async (messages: any[], model?: string): Promise<string> => {
+        const useModel = model || selectedChatModel;
+        const endpoint = chatModelDocs?.api_schema?.endpoint || '/v1/chat/completions';
+        const resp = await fetch(API_BASE + '/api/ai-gateway/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: useModel, messages, _endpoint: endpoint }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+        return data.choices?.[0]?.message?.content || '';
+    };
+
+    // AI Gateway image generation call
+    const callImageGen = async (prompt: string, options: any = {}): Promise<string> => {
+        const endpoint = imageModelDocs?.api_schema?.endpoint || '/v1/images/generations';
+        const body: any = { model: selectedImageModel, prompt, _endpoint: endpoint, ...options };
+        const resp = await fetch(API_BASE + '/api/ai-gateway/image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+        // 尝试从多种响应格式中提取图片URL
+        if (data.data?.[0]?.url) return data.data[0].url;
+        if (data.data?.[0]?.b64_json) return `data:image/png;base64,${data.data[0].b64_json}`;
+        if (data.images?.[0]?.url) return data.images[0].url;
+        if (data.output?.url) return data.output.url;
+        throw new Error('No image in response');
     };
 
     const getNextSequenceName = (indexOffset: number = 0): string => {
@@ -287,9 +390,6 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
 
         if (isAutoExpand && generationCount > 0) {
             try {
-                const ai = getAIClient();
-                if (!ai) throw new Error("API Key Missing");
-
                 const prompt = `You are an expert creative assistant. The user wants to generate images based on the keyword or concept: "${trimmedPrompt}".
                 Please generate ${generationCount} distinct image prompts that are related to or variations of this concept.
                 CONSTRAINTS: Keep prompts SHORT and SIMPLE. NO color-related words.
@@ -297,12 +397,8 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                 Example output: ["prompt 1", "prompt 2"]
                 Do not use Markdown. Do not add comments or trailing commas.`;
 
-                const response = await ai.models.generateContent({
-                    model: 'gemini-3-flash-preview',
-                    contents: prompt,
-                });
-
-                const parsedPrompts = safeParseJSON(response.text || '[]');
+                const text = await callChat([{ role: 'user', content: prompt }]);
+                const parsedPrompts = safeParseJSON(text || '[]');
 
                 if (Array.isArray(parsedPrompts)) {
                     promptsToUse = parsedPrompts;
@@ -364,12 +460,10 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
     const getSearchData = async (type: 'hot' | 'scarce') => {
         try {
             const endpoint = type === 'hot' ? 'h' : 'rarity';
-            const res = await fetch(`https://sg.api.eyewind.cn/etl/imagen/history/${endpoint}`, {
-                "headers": { "content-type": "application/json" },
-                "body": JSON.stringify({ limit: 1000 }),
-                "method": "POST",
-                "mode": "cors",
-                "credentials": "omit"
+            const res = await fetch(`${API_BASE}/api/history/${endpoint}`, {
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ limit: 1000 }),
+                method: "POST",
             }).then(r => r.json());
             return res.data || [];
         } catch (e: any) { return null; }
@@ -421,36 +515,25 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
         setIsGenerating(true);
         showToast(`开始处理 ${tasksToProcess.length} 个任务...`, 'info');
 
-        const ai = getAIClient();
-        if (!ai) { showToast("API Key Error", "error"); setIsGenerating(false); return; }
-
         const config = aiModelConfig?.imageGeneration;
-        const modelName = config?.modelName || 'gemini-2.5-flash-image';
-        const template = config?.presetPrompts?.[config?.activePresetPromptIndex ?? 0] || '{PROMPT}';
+        const template = config?.presetPrompts?.[config?.activePresetPromptIndex ?? 0] || '{subject}';
 
         const getAspectRatio = (size: AIGenerationSize) => {
             return size === '横屏' ? '16:9' : size === '竖屏' ? '9:16' : '1:1';
         };
 
         const generateImageWithRetry = async (task: ImageGenerationTask): Promise<ImageGenerationTask> => {
-            const finalPrompt = template.replace('{PROMPT}', task.prompt).replace('{STYLE}', task.style);
+            const finalPrompt = template.replace('{subject}', task.prompt).replace('{style}', task.style);
             const aspectRatio = getAspectRatio(task.size);
             
             try {
-                let imageUrl = '';
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: [{ text: finalPrompt }] },
-                    config: { imageConfig: { aspectRatio: aspectRatio as any } }
+                const imageUrl = await callImageGen(finalPrompt, {
+                    aspect_ratio: aspectRatio,
+                    size: aspectRatio === '1:1' ? '1024x1024' : aspectRatio === '16:9' ? '1792x1024' : '1024x1792',
+                    n: 1,
                 });
-                for (const part of response.candidates?.[0]?.content?.parts || []) {
-                    if (part.inlineData) {
-                        imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                        break;
-                    }
-                }
                 if (imageUrl) {
-                    return { ...task, status: 'done', imageUrl, completionDate: new Date().toISOString(), modelName, errorMessage: undefined };
+                    return { ...task, status: 'done', imageUrl, completionDate: new Date().toISOString(), modelName: selectedImageModel, errorMessage: undefined };
                 }
                 throw new Error("No image generated");
             } catch (error: any) {
@@ -552,22 +635,12 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
         setUploadTasks(initialUploadTasks);
         setIsReviewModalOpen(true);
 
-        const ai = getAIClient();
-        if (!ai) return;
-
-        // Background AI Processing Loop
+        // Background AI Processing Loop (using ai-gateway chat with vision)
         for (const task of initialUploadTasks) {
             try {
-                // Update progress to started
                 setUploadTasks(prev => prev.map(t => t.id === task.id ? { ...t, progress: 10 } : t));
 
-                const base64Data = task.preview.split(',')[1];
-                const imagePart = { inlineData: { data: base64Data, mimeType: 'image/png' } };
-
-                // Combined Prompt for Tags + Category
-                // Note: We tell the AI to choose from FIXED_CATEGORIES
-                const analysisPrompt = `
-                    Analyze this image. 
+                const analysisPrompt = `Analyze this image. 
                     1. Generate 5-8 descriptive tags in English.
                     2. Provide Simplified Chinese translations for these tags.
                     3. Choose the best single category from this EXACT list: [${FIXED_CATEGORIES.join(', ')}].
@@ -579,15 +652,19 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                         "tags": ["tag1", "tag2"],
                         "tagsZh": ["标签1", "标签2"],
                         "category": "CategoryName"
-                    }
-                `;
+                    }`;
 
-                const response = await ai.models.generateContent({
-                    model: aiModelConfig.imageTagging.modelName, // Using text model for analysis
-                    contents: { parts: [imagePart, { text: analysisPrompt }] }
-                });
+                // Build vision message with image
+                const messages: any[] = [{
+                    role: 'user',
+                    content: [
+                        { type: 'image_url', image_url: { url: task.preview } },
+                        { type: 'text', text: analysisPrompt },
+                    ]
+                }];
 
-                const result = safeParseJSON(response.text || '{}') as any;
+                const text = await callChat(messages);
+                const result = safeParseJSON(text || '{}') as any;
 
                 setUploadTasks(prev => prev.map(t => t.id === task.id ? { 
                     ...t, 
@@ -640,6 +717,96 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
         setIsReviewModalOpen(false);
         setCurrentSelection(new Set()); // Clear current selection
         showToast(`已将 ${newAssets.length} 张图片添加到素材库`, 'success');
+    };
+
+    // 真正调用 /api/import-img 上传到服务器
+    const handleRealUploadToServer = async () => {
+        const currentList = getCurrentList();
+        const currentSelection = getCurrentSelection();
+        const selectedTasks = currentList.filter(t => currentSelection.has(t.id) && t.imageUrl);
+        if (selectedTasks.length === 0) return;
+
+        if (uploadConfigType === 'normal' && !uploadConfigCategory) {
+            showToast('普通素材需要选择分类', 'error');
+            return;
+        }
+
+        setIsUploading(true);
+        setUploadProgress({ done: 0, total: selectedTasks.length });
+        let successCount = 0;
+
+        for (let i = 0; i < selectedTasks.length; i++) {
+            const task = selectedTasks[i];
+            try {
+                let blob: Blob;
+
+                if (task.imageUrl!.startsWith('data:')) {
+                    // data URL → 直接转 Blob
+                    const resp = await fetch(task.imageUrl!);
+                    blob = await resp.blob();
+                } else {
+                    // 远程 URL → 通过服务器代理下载，避免 CORS 问题
+                    try {
+                        const proxyRes = await fetch(`${API_BASE}/api/proxy-image`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: task.imageUrl }),
+                        });
+                        if (!proxyRes.ok) throw new Error('proxy failed');
+                        blob = await proxyRes.blob();
+                    } catch {
+                        // fallback: 直接 fetch（可能被 CORS 拦截）
+                        const directRes = await fetch(task.imageUrl!);
+                        blob = await directRes.blob();
+                    }
+                }
+
+                // 自动生成文件名: yyyyMMdd-毫秒后4位-序号.ext
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+                const ms4 = String(now.getTime()).slice(-4);
+                const ext = blob.type.includes('png') ? '.png' : blob.type.includes('webp') ? '.webp' : '.jpg';
+                const autoName = `${dateStr}-${ms4}-${i}${ext}`;
+
+                const formData = new FormData();
+                formData.append('type', uploadConfigType);
+                formData.append('img', new File([blob], autoName, { type: blob.type }));
+                if (uploadConfigSearchTags.trim()) formData.append('searchTags', uploadConfigSearchTags.trim());
+                if (uploadConfigType === 'normal') {
+                    if (uploadConfigCategory) formData.append('category', uploadConfigCategory);
+                    if (uploadConfigAdUnlock) formData.append('ad', '1');
+                }
+
+                const res = await fetch(`${API_BASE}/api/import-img`, { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) successCount++;
+            } catch (e) {
+                console.error(`Upload failed for task ${task.id}:`, e);
+            }
+            setUploadProgress({ done: i + 1, total: selectedTasks.length });
+        }
+
+        // 上传完成后更新素材配置
+        if (successCount > 0) {
+            try {
+                showToast('正在更新素材配置...', 'info');
+                const configRes = await fetch(`${API_BASE}/api/update-content-config`);
+                const configData = await configRes.json();
+                if (configData.success) {
+                    showToast(`${successCount}/${selectedTasks.length} 张上传成功，配置已更新 (${configData.data?.count || 0} 张)`, 'success');
+                } else {
+                    showToast(`上传成功但配置更新失败`, 'error');
+                }
+            } catch {
+                showToast(`上传成功但配置更新请求失败`, 'error');
+            }
+        } else {
+            showToast('全部上传失败', 'error');
+        }
+
+        setIsUploading(false);
+        setIsUploadConfigOpen(false);
+        setCurrentSelection(new Set());
     };
 
     const handleDownloadPackage = async (finalizedTasks: UploadTask[]) => {
@@ -881,7 +1048,7 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                             <button onClick={() => handleIntegratedProcess('download')} disabled={currentSelection.size === 0} className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center">
                                 <Icons.DownloadIcon className="w-4 h-4 mr-1"/> 下载选中
                             </button>
-                             <button onClick={() => handleIntegratedProcess('upload')} disabled={currentSelection.size === 0} className="flex items-center px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary-hover disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
+                             <button onClick={() => { setUploadConfigType('normal'); setUploadConfigCategory(''); setUploadConfigSearchTags(''); setUploadConfigAdUnlock(false); setIsUploadConfigOpen(true); }} disabled={currentSelection.size === 0} className="flex items-center px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary-hover disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
                                  <Icons.CloudUploadIcon className="w-4 h-4 mr-2" /> 上传到素材库
                             </button>
                          </div>
@@ -1046,10 +1213,30 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                     initialStyles={generationStyles}
                     initialModelName={aiModelConfig.imageGeneration.modelName}
                     initialDefaultSize={aiModelConfig.imageGeneration.defaultSize || '方形'}
-                    availableImageModels={availableModels.image}
-                    onSave={(newPrompts, newActiveIndex, newStyles, newModelName, newDefaultSize) => {
+                    availableImageModels={gatewayImageModels.map(m => m.id)}
+                    availableChatModels={gatewayModels.map(m => m.id)}
+                    selectedChatModel={selectedChatModel}
+                    selectedImageModel={selectedImageModel}
+                    onSave={(newPrompts, newActiveIndex, newStyles, newModelName, newDefaultSize, newChatModel, newImageModel) => {
                         setAiModelConfig(prev => ({...prev, imageGeneration: {...prev.imageGeneration, presetPrompts: newPrompts, activePresetPromptIndex: newActiveIndex, modelName: newModelName, defaultSize: newDefaultSize}}));
                         setGenerationStyles(newStyles);
+                        if (newChatModel) setSelectedChatModel(newChatModel);
+                        if (newImageModel) setSelectedImageModel(newImageModel);
+                        // 写入 localStorage 缓存
+                        try {
+                            const settings = {
+                                presetPrompts: newPrompts,
+                                activePresetPromptIndex: newActiveIndex,
+                                generationStyles: newStyles,
+                                modelName: newModelName,
+                                defaultSize: newDefaultSize,
+                            };
+                            localStorage.setItem('batch_gen_settings', JSON.stringify(settings));
+                            if (newChatModel) localStorage.setItem('batch_gen_chat_model', newChatModel);
+                            if (newImageModel) localStorage.setItem('batch_gen_image_model', newImageModel);
+                        } catch (e) {
+                            console.warn('[BatchGen] 缓存写入失败:', e);
+                        }
                         setIsPromptSettingsModalOpen(false);
                         showToast('设置已保存', 'success');
                     }} 
@@ -1077,6 +1264,110 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                 </div>
             </Modal>
 
+            <Modal isOpen={isUploadConfigOpen} onClose={() => !isUploading && setIsUploadConfigOpen(false)} title="上传到素材库">
+                <div className="space-y-5">
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
+                        已选中 <span className="font-bold">{currentSelection.size}</span> 张图片准备上传
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">上传类型</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { key: 'normal', label: '普通素材', icon: '🖼️' },
+                                { key: 'activity', label: '活动素材', icon: '🎉' },
+                                { key: 'daily', label: '每日素材', icon: '📅' },
+                                { key: 'gray', label: '高级涂色', icon: '🎨' },
+                            ].map(t => (
+                                <button
+                                    key={t.key}
+                                    onClick={() => setUploadConfigType(t.key)}
+                                    className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                                        uploadConfigType === t.key
+                                            ? 'border-primary bg-primary/5 text-primary'
+                                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span>{t.icon}</span> {t.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {uploadConfigType === 'normal' && (
+                        <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">素材分类</label>
+                                <select
+                                    value={uploadConfigCategory}
+                                    onChange={e => setUploadConfigCategory(e.target.value)}
+                                    className="w-full p-2.5 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-primary focus:border-primary"
+                                >
+                                    <option value="">-- 请选择分类 --</option>
+                                    {FIXED_CATEGORIES.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    id="upload-ad-unlock"
+                                    type="checkbox"
+                                    checked={uploadConfigAdUnlock}
+                                    onChange={e => setUploadConfigAdUnlock(e.target.checked)}
+                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
+                                />
+                                <label htmlFor="upload-ad-unlock" className="text-sm text-gray-700 cursor-pointer">看广告解锁</label>
+                            </div>
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">搜索标签 (英文，逗号分隔，可选)</label>
+                        <input
+                            type="text"
+                            value={uploadConfigSearchTags}
+                            onChange={e => setUploadConfigSearchTags(e.target.value)}
+                            placeholder="e.g. cat, flower, landscape"
+                            className="w-full p-2.5 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-primary focus:border-primary"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">不填也可以，上传接口会自动解析图片生成标签</p>
+                    </div>
+
+                    {isUploading && (
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>上传进度</span>
+                                <span className="font-medium">{uploadProgress.done}/{uploadProgress.total}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                    className="h-full bg-primary rounded-full transition-all duration-300"
+                                    style={{ width: `${uploadProgress.total > 0 ? (uploadProgress.done / uploadProgress.total) * 100 : 0}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-4 border-t">
+                        <button
+                            onClick={() => setIsUploadConfigOpen(false)}
+                            disabled={isUploading}
+                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleRealUploadToServer}
+                            disabled={isUploading || currentSelection.size === 0}
+                            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isUploading ? <><Spinner size="sm" className="text-white" /> 上传中...</> : `开始上传 (${currentSelection.size} 张)`}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
             {isReviewModalOpen && (
                 <ReviewAndEditModal 
                     isOpen={isReviewModalOpen} 
@@ -1089,6 +1380,14 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                     mode={processMode}
                 />
             )}
+
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={importModalConfig?.type === 'hot' ? '导入热搜词条' : '导入稀缺词条'} maxWidth="4xl">
+                <ImportForm
+                    config={importModalConfig}
+                    onConfirm={handleConfirmImport}
+                    onCancel={() => setIsImportModalOpen(false)}
+                />
+            </Modal>
         </div>
     );
 };
@@ -1100,18 +1399,32 @@ const PromptSettingsForm: React.FC<{
     initialModelName: string;
     initialDefaultSize: AIGenerationSize;
     availableImageModels: string[];
-    onSave: (prompts: string[], activeIndex: number, styles: AIGenerationStyle[], modelName: string, defaultSize: AIGenerationSize) => void;
+    availableChatModels: string[];
+    selectedChatModel: string;
+    selectedImageModel: string;
+    onSave: (prompts: string[], activeIndex: number, styles: AIGenerationStyle[], modelName: string, defaultSize: AIGenerationSize, chatModel: string, imageModel: string) => void;
     onCancel: () => void;
-}> = ({ initialPrompts, initialActiveIndex, initialStyles, initialModelName, initialDefaultSize, availableImageModels, onSave, onCancel }) => {
+}> = ({ initialPrompts, initialActiveIndex, initialStyles, initialModelName, initialDefaultSize, availableImageModels, availableChatModels, selectedChatModel, selectedImageModel, onSave, onCancel }) => {
     const [prompts, setPrompts] = useState<string[]>(initialPrompts.length > 0 ? initialPrompts : ['']);
     const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
     const [styles, setStyles] = useState<string>(initialStyles.join(', '));
     const [modelName, setModelName] = useState(initialModelName);
     const [defaultSize, setDefaultSize] = useState<AIGenerationSize>(initialDefaultSize);
+    const [chatModel, setChatModel] = useState(selectedChatModel);
+    const [imageModel, setImageModel] = useState(selectedImageModel);
+    const [chatFilter, setChatFilter] = useState('');
+    const [imageFilter, setImageFilter] = useState('');
+
+    const filteredChatModels = chatFilter 
+        ? availableChatModels.filter(m => m.toLowerCase().includes(chatFilter.toLowerCase()))
+        : availableChatModels;
+    const filteredImageModels = imageFilter
+        ? availableImageModels.filter(m => m.toLowerCase().includes(imageFilter.toLowerCase()))
+        : availableImageModels;
 
     const handleSave = () => {
         const styleArray = styles.split(',').map(s => s.trim()).filter(s => s !== '');
-        onSave(prompts.filter(p => p.trim() !== ''), activeIndex, styleArray, modelName, defaultSize);
+        onSave(prompts.filter(p => p.trim() !== ''), activeIndex, styleArray, modelName, defaultSize, chatModel, imageModel);
     };
 
     const handlePromptChange = (index: number, value: string) => {
@@ -1131,11 +1444,23 @@ const PromptSettingsForm: React.FC<{
         <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">默认生图模型</label>
-                    <select value={modelName} onChange={(e) => setModelName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                        {availableImageModels.map(m => <option key={m} value={m}>{m}</option>)}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">聊天模型 (AI联想/图片分析)</label>
+                    <input type="text" placeholder="搜索模型..." value={chatFilter} onChange={e => setChatFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white mb-1 text-sm" />
+                    <select value={chatModel} onChange={(e) => setChatModel(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white" size={5}>
+                        {filteredChatModels.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
+                    <p className="text-xs text-gray-400 mt-1">当前: {chatModel} ({availableChatModels.length} 个可用)</p>
                 </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">图片生成模型</label>
+                    <input type="text" placeholder="搜索模型..." value={imageFilter} onChange={e => setImageFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white mb-1 text-sm" />
+                    <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white" size={5}>
+                        {filteredImageModels.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">当前: {imageModel} ({availableImageModels.length} 个可用)</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">默认生图尺寸</label>
                     <select value={defaultSize} onChange={(e) => setDefaultSize(e.target.value as AIGenerationSize)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
@@ -1165,7 +1490,7 @@ const PromptSettingsForm: React.FC<{
                                 onChange={(e) => handlePromptChange(index, e.target.value)} 
                                 className={`flex-1 p-2 border rounded-md text-sm ${activeIndex === index ? 'border-primary ring-1 ring-primary' : 'border-gray-300'}`}
                                 rows={2}
-                                placeholder="输入提示词模版，使用 {PROMPT} 和 {STYLE} 作为占位符..."
+                                placeholder="输入提示词模版，使用 {subject} 和 {style} 作为占位符..."
                             />
                             <button onClick={() => removePrompt(index)} className="p-2 text-gray-400 hover:text-red-500">
                                 <Icons.DeleteIcon className="w-4 h-4" />

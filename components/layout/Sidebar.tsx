@@ -77,7 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         },
         { id: 'search', label: '搜索管理', icon: <SearchIcon /> },
         { id: 'batch-image-generation', label: '批量生图工具', icon: <FileArchiveIcon /> },
-        { id: 'user-management', label: '订阅用户管理', icon: <CreditCardIcon /> },
+        // { id: 'user-management', label: '订阅用户管理', icon: <CreditCardIcon /> },
     ];
 
     const handleNavClick = (page: Page) => {
@@ -171,7 +171,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex flex-col h-full bg-white/95 backdrop-blur">
                     <div className="flex items-center justify-between p-6 h-20 flex-shrink-0">
                         <div className="flex items-center space-x-3 text-2xl font-bold tracking-tight text-gray-900">
-                            <div className="rounded-lg shadow-lg overflow-hidden w-9 h-9">
+                            <div className="rounded-xl shadow-lg overflow-hidden w-10 h-10 flex items-center justify-center">
                                 <AppLogoIcon className="w-full h-full" />
                             </div>
                             <span className="bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">Incolor</span>
