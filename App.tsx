@@ -60,7 +60,7 @@ const App: React.FC = () => {
 
     switch (pageKey) {
       case 'dashboard':
-        return <Dashboard setCurrentPage={handlePageChange} assets={mockData.assets} assetsLoading={mockData.isLoading} refreshAssets={mockData.refreshAssets} />;
+        return <Dashboard setCurrentPage={handlePageChange} assets={mockData.assets} themedBooks={mockData.themedBooks} assetsLoading={mockData.isLoading} refreshAssets={mockData.refreshAssets} />;
       case 'assets':
         return <AssetManagement {...mockData} activeTab={assetTab} />;
       case 'ai-generations':

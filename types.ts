@@ -102,11 +102,21 @@ export interface AIGenerationRecords {
     URL: string;
     model: string;
     ratio: number;
+    ratioFormatted?: string;
     style: string;
     uid: string;
     prompt: string;
+    promptEnhance?: string;
+    promptTrans?: string;
+    description?: any[];
+    description_zh?: string;
     createdAt: string;
-    description_zh: string;
+    platform?: string;
+    clientVersion?: string;
+    mode?: string;
+    seed?: number;
+    success?: boolean;
+    [key: string]: any; // 允许其他动态字段
 }
 
 export type ReportStatus = 'Pending' | 'Resolved' | 'Ignored';

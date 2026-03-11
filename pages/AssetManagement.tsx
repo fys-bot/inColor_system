@@ -1305,7 +1305,7 @@ const AssetDetailModal: React.FC<{
                                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                                             />
                                             {uc.type && (
-                                                <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500/80 backdrop-blur-sm text-white text-[9px] font-bold rounded-md z-10">{uc.type}</span>
+                                                <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500/80 backdrop-blur-sm text-white text-[9px] font-bold rounded-md">{uc.type}</span>
                                             )}
                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                 <EyeIcon className="w-8 h-8 text-white" />

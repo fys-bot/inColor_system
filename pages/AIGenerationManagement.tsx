@@ -112,6 +112,50 @@ const FilterPanel: React.FC<{
     </div>
 );
 
+// 详情面板辅助组件
+const SectionHeader: React.FC<{ icon: string; title: string; count?: number; collapsed?: boolean; onToggle?: () => void }> = ({ icon, title, count, collapsed, onToggle }) => (
+    <button onClick={onToggle} className="flex items-center gap-2 w-full text-left group">
+        <span className="text-sm">{icon}</span>
+        <span className="text-xs font-bold text-gray-700 tracking-wide">{title}</span>
+        {count !== undefined && <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">{count}</span>}
+        <div className="flex-1 border-b border-gray-200 ml-1" />
+        {collapsed !== undefined && <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition-colors">{collapsed ? '▶' : '▼'}</span>}
+    </button>
+);
+
+const CollapsibleSection: React.FC<{ icon: string; title: string; count?: number; defaultOpen?: boolean; children: React.ReactNode }> = ({ icon, title, count, defaultOpen = true, children }) => {
+    const [open, setOpen] = React.useState(defaultOpen);
+    return (
+        <div className="space-y-2">
+            <SectionHeader icon={icon} title={title} count={count} collapsed={!open} onToggle={() => setOpen(!open)} />
+            {open && children}
+        </div>
+    );
+};
+
+const PromptBlock: React.FC<{ label: string; value: string | undefined; color: string }> = ({ label, value, color }) => (
+    <div>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+        <p className={`text-sm text-gray-800 ${color} p-3 rounded-lg leading-relaxed break-words`}>
+            {value || <span className="text-gray-400 italic">空</span>}
+        </p>
+    </div>
+);
+
+const ParamTag: React.FC<{ label: string; value: string; accent?: boolean }> = ({ label, value, accent }) => (
+    <div className={`rounded-lg px-3 py-2 ${accent ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+        <p className={`text-xs font-medium ${accent ? 'text-blue-700' : 'text-gray-800'} truncate`}>{value || '-'}</p>
+    </div>
+);
+
+const InfoRow: React.FC<{ label: string; value: string; mono?: boolean; selectable?: boolean }> = ({ label, value, mono, selectable }) => (
+    <div className="flex items-start gap-2 py-1.5">
+        <span className="text-[11px] text-gray-400 font-medium w-16 flex-shrink-0 pt-0.5">{label}</span>
+        <span className={`text-xs text-gray-700 break-all ${mono ? 'font-mono' : ''} ${selectable ? 'select-all bg-gray-50 px-1.5 py-0.5 rounded' : ''}`}>{value || '-'}</span>
+    </div>
+);
+
 interface AIGenerationListProps {
     aiModelConfig: AIModelConfig;
     generationStyles: AIGenerationStyle[];
@@ -419,7 +463,7 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
         }
     };
 
-    const tableHeaders = ['模型名称', '尺寸', '风格', '操作系统', '应用版本', '生图类型', '用户 ID', '提示词内容', '提示词翻译', '生图时间', '图片'];
+    const tableHeaders = ['模型名称', '尺寸', '风格', '操作系统', '应用版本', '生图类型', '用户 ID', 'prompt (用户提示词)', 'promptTrans (机翻英文)', '生图时间', '图片'];
 
     return (
         <div className="bg-white rounded-lg shadow-md border flex flex-col h-full">
@@ -490,10 +534,10 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
                                         <div>
                                             <strong className="font-medium text-gray-600">提示词:</strong>
                                             <div className="mt-1 text-sm text-gray-800 break-words">
-                                                {gen.prompt}
+                                                {gen.prompt || '-'}
                                             </div>
                                         </div>
-                                        <div><strong className="font-medium text-gray-600">提示词翻译:</strong> <span className="text-gray-800">{gen.description_zh}</span></div>
+                                        <div><strong className="font-medium text-gray-600">机翻英文:</strong> <span className="text-gray-800">{gen.promptTrans || '-'}</span></div>
                                         <div><strong className="font-medium text-gray-600">风格:</strong> {gen.style}</div>
                                         <div><strong className="font-medium text-gray-600">模型:</strong> {gen.model}</div>
                                         <div><strong className="font-medium text-gray-600">操作系统:</strong> {gen.platform || '-'}</div>
@@ -535,10 +579,10 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
                                     <td className="py-4 px-3 text-center">{formatModeDisplay(gen.mode)}</td>
                                     <td className="py-4 px-3 text-xs font-mono">{gen.uid}</td>
                                     <td className="py-4 px-3 max-w-[200px]">
-                                        <p className="break-words text-gray-800 text-xs line-clamp-3" title={gen.prompt}>{gen.prompt}</p>
+                                        <p className="break-words text-gray-800 text-xs line-clamp-3" title={gen.prompt}>{gen.prompt || '-'}</p>
                                     </td>
-                                    <td className="py-4 px-3 max-w-[160px]">
-                                        <p className="truncate text-xs" title={gen.description_zh}>{gen.description_zh}</p>
+                                    <td className="py-4 px-3 max-w-[200px]">
+                                        <p className="break-words text-xs line-clamp-3" title={gen.promptTrans}>{gen.promptTrans || '-'}</p>
                                     </td>
                                     <td className="py-4 px-3 whitespace-nowrap text-xs">{new Date(gen.createdAt).toLocaleString()}</td>
                                     <td className="py-2 px-3" onClick={e => e.stopPropagation()}>
@@ -698,73 +742,119 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
                         </div>
 
                         {/* Details Panel */}
-                        <div className="w-80 bg-white rounded-lg p-6 overflow-y-auto flex-shrink-0 shadow-xl pointer-events-auto h-fit max-h-full">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-gray-900">图片详情</h3>
-                                <button onClick={handleClosePreview} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-hover transition-colors flex items-center gap-2">
-                                    <ChevronLeftIcon className="w-4 h-4" />
-                                    返回列表
+                        <div className="w-96 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-xl pointer-events-auto flex flex-col max-h-full">
+                            <div className="flex items-center justify-between p-5 border-b bg-gray-50 flex-shrink-0">
+                                <h3 className="text-lg font-bold text-gray-900">图片详情</h3>
+                                <button onClick={handleClosePreview} className="px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary-hover transition-colors flex items-center gap-1.5">
+                                    <ChevronLeftIcon className="w-3.5 h-3.5" />
+                                    返回
                                 </button>
                             </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase">提示词 (Prompt)</label>
-                                    <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded mt-1 leading-relaxed break-words max-h-32 overflow-y-auto">
-                                        {filteredGenerations[previewIndex].prompt || '(无)'}
-                                    </p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase">提示词翻译</label>
-                                    <p className="text-sm text-gray-800 mt-1">
-                                        {filteredGenerations[previewIndex].description_zh || '—'}
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase">风格</label>
-                                        <span className="inline-block mt-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                            {filteredGenerations[previewIndex].style}
-                                        </span>
+                            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                                {/* ═══ 1. 提示词信息 ═══ */}
+                                <CollapsibleSection icon="💬" title="提示词信息">
+                                    <div className="space-y-3">
+                                        <PromptBlock label="用户提示词 (prompt)" value={filteredGenerations[previewIndex].prompt} color="bg-blue-50 border border-blue-100" />
+                                        <PromptBlock label="机翻英文 (promptTrans)" value={filteredGenerations[previewIndex].promptTrans} color="bg-green-50 border border-green-100" />
+                                        {filteredGenerations[previewIndex].promptEnhance && (
+                                            <CollapsibleSection icon="" title="AI 增强 (promptEnhance)" defaultOpen={false}>
+                                                <p className="text-xs text-gray-600 bg-amber-50 border border-amber-100 p-3 rounded-lg leading-relaxed break-words max-h-40 overflow-y-auto">
+                                                    {filteredGenerations[previewIndex].promptEnhance}
+                                                </p>
+                                            </CollapsibleSection>
+                                        )}
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase">尺寸 (Ratio)</label>
-                                        <p className="text-sm text-gray-800 mt-1">{typeof filteredGenerations[previewIndex].ratio === 'number' ? formatRatioDisplay(filteredGenerations[previewIndex].ratio) : '1:1'}</p>
+                                </CollapsibleSection>
+
+                                {/* ═══ 2. 生成参数 ═══ */}
+                                <CollapsibleSection icon="⚙️" title="生成参数">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <ParamTag label="风格" value={filteredGenerations[previewIndex].style} accent />
+                                        <ParamTag label="尺寸" value={filteredGenerations[previewIndex].ratioFormatted || (typeof filteredGenerations[previewIndex].ratio === 'number' ? formatRatioDisplay(filteredGenerations[previewIndex].ratio) : '1:1')} />
+                                        <ParamTag label="模型" value={filteredGenerations[previewIndex].model} />
+                                        <ParamTag label="生图类型" value={formatModeDisplay(filteredGenerations[previewIndex].mode)} />
+                                        <ParamTag label="Seed" value={filteredGenerations[previewIndex].seed != null ? String(filteredGenerations[previewIndex].seed) : '-'} />
+                                        <ParamTag label="状态" value={filteredGenerations[previewIndex].success === true ? '✅ 成功' : filteredGenerations[previewIndex].success === false ? '❌ 失败' : '-'} />
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase">模型</label>
-                                    <p className="text-sm text-gray-800 mt-1 font-mono text-xs">{filteredGenerations[previewIndex].model}</p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase">用户 ID</label>
-                                    <p className="text-sm text-gray-800 mt-1 font-mono text-xs break-all">{filteredGenerations[previewIndex].uid}</p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 uppercase">生图时间</label>
-                                    <p className="text-sm text-gray-800 mt-1">
-                                        {new Date(filteredGenerations[previewIndex].createdAt).toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase">系统</label>
-                                        <p className="text-sm text-gray-800 mt-1">{filteredGenerations[previewIndex].platform || '-'}</p>
+                                </CollapsibleSection>
+
+                                {/* ═══ 3. 用户 & 设备 ═══ */}
+                                <CollapsibleSection icon="👤" title="用户 & 设备">
+                                    <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-0.5">
+                                        <InfoRow label="用户 ID" value={filteredGenerations[previewIndex].uid} mono selectable />
+                                        <InfoRow label="操作系统" value={filteredGenerations[previewIndex].platform || '-'} />
+                                        <InfoRow label="应用版本" value={filteredGenerations[previewIndex].clientVersion || '-'} />
+                                        <InfoRow label="生图时间" value={new Date(filteredGenerations[previewIndex].createdAt).toLocaleString()} />
+                                        <InfoRow label="图片 ID" value={filteredGenerations[previewIndex].id} mono selectable />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase">版本</label>
-                                        <p className="text-sm text-gray-800 mt-1">{filteredGenerations[previewIndex].clientVersion || '-'}</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 uppercase">类型</label>
-                                        <p className="text-sm text-gray-800 mt-1">{formatModeDisplay(filteredGenerations[previewIndex].mode)}</p>
-                                    </div>
-                                </div>
+                                </CollapsibleSection>
+
+                                {/* ═══ 4. 多语言描述 ═══ */}
+                                {(() => {
+                                    const gen = filteredGenerations[previewIndex];
+                                    const descKeys = Object.keys(gen).filter(k => k.startsWith('description'));
+                                    const hasDesc = descKeys.some(k => {
+                                        const v = gen[k];
+                                        if (Array.isArray(v)) return v.length > 0;
+                                        return v !== undefined && v !== null && v !== '';
+                                    });
+                                    if (!hasDesc) return null;
+                                    return (
+                                        <CollapsibleSection icon="🌐" title="多语言描述" count={descKeys.length} defaultOpen={false}>
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                {descKeys.sort().map(key => {
+                                                    const val = gen[key];
+                                                    if (val === undefined || val === null || val === '') return null;
+                                                    const lang = key === 'description' ? '默认' : key.replace('description_', '').toUpperCase();
+                                                    return (
+                                                        <div key={key} className="bg-gray-50 rounded-lg px-3 py-2">
+                                                            <span className="inline-block text-[10px] font-bold text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded mb-1 uppercase">{lang}</span>
+                                                            {Array.isArray(val) ? (
+                                                                <div className="space-y-1">
+                                                                    {val.map((item: any, idx: number) => (
+                                                                        <p key={idx} className="text-xs text-gray-600">{typeof item === 'string' ? item : JSON.stringify(item)}</p>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs text-gray-700">{String(val)}</p>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </CollapsibleSection>
+                                    );
+                                })()}
+
+                                {/* ═══ 5. 其他字段 ═══ */}
+                                {(() => {
+                                    const knownKeys = new Set(['id', 'URL', 'model', 'ratio', 'ratioFormatted', 'style', 'uid', 'prompt', 'promptEnhance', 'promptTrans', 'createdAt', 'platform', 'clientVersion', 'mode', 'seed', 'success']);
+                                    const gen = filteredGenerations[previewIndex];
+                                    const extraKeys = Object.keys(gen).filter(k => !knownKeys.has(k) && !k.startsWith('description') && gen[k] !== undefined && gen[k] !== null && gen[k] !== '');
+                                    if (extraKeys.length === 0) return null;
+                                    return (
+                                        <CollapsibleSection icon="📋" title="其他字段" count={extraKeys.length} defaultOpen={false}>
+                                            <div className="space-y-2">
+                                                {extraKeys.map(key => {
+                                                    const val = gen[key];
+                                                    const display = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
+                                                    return (
+                                                        <div key={key} className="bg-gray-50 rounded-lg px-3 py-2">
+                                                            <p className="text-[10px] font-bold text-gray-400 font-mono mb-0.5">{key}</p>
+                                                            <p className="text-xs text-gray-700 break-all whitespace-pre-wrap">{display}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </CollapsibleSection>
+                                    );
+                                })()}
                             </div>
                             
-                            <div className="mt-8 pt-6 border-t">
+                            <div className="p-4 border-t flex-shrink-0">
                                  <button 
                                     onClick={handleToggleCurrentPreviewSelection}
-                                    className={`w-full py-2 px-4 rounded-md flex items-center justify-center gap-2 transition-colors ${selectedRows.has(filteredGenerations[previewIndex].id) ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    className={`w-full py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium text-sm ${selectedRows.has(filteredGenerations[previewIndex].id) ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                                  >
                                     <CheckIcon className={`w-4 h-4 ${selectedRows.has(filteredGenerations[previewIndex].id) ? 'opacity-100' : 'opacity-0'}`} />
                                     {selectedRows.has(filteredGenerations[previewIndex].id) ? '已选中此图片' : '选中此图片'}
@@ -773,8 +863,8 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
                         </div>
                     </div>
 
-                    <button onClick={handleClosePreview} className="absolute top-4 right-4 text-white p-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full z-[70] transition-colors">
-                        <CloseIcon className="w-8 h-8" />
+                    <button onClick={handleClosePreview} className="absolute top-4 left-1/2 -translate-x-1/2 text-white px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full z-[70] transition-colors text-sm font-medium flex items-center gap-2">
+                        <CloseIcon className="w-5 h-5" /> ESC 关闭
                     </button>
                     
                     <button 
@@ -788,7 +878,7 @@ const AIGenerationList: React.FC<AIGenerationListProps> = ({ aiModelConfig, gene
                     <button 
                         onClick={handleNextPreview} 
                         disabled={previewIndex === filteredGenerations.length - 1}
-                        className={`absolute right-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full z-[70] bg-black/50 transition-all ${previewIndex === filteredGenerations.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-black/70'}`}
+                        className={`absolute right-[26rem] top-1/2 -translate-y-1/2 text-white p-2 rounded-full z-[70] bg-black/50 transition-all ${previewIndex === filteredGenerations.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-black/70'}`}
                     >
                         <ChevronRightIcon className="w-10 h-10" />
                     </button>
