@@ -29,8 +29,8 @@ const mockUserCreations: UserCreation[] = [
 
 // Helper to format date
 const formatDate = (timestamp?: number) => {
-    if (!timestamp) return new Date().toISOString().split('T')[0];
-    return new Date(timestamp).toISOString().split('T')[0];
+    if (!timestamp) return new Date().toISOString().replace('T', ' ').substring(0, 19);
+    return new Date(timestamp).toISOString().replace('T', ' ').substring(0, 19);
 };
 
 export const useMockData = () => {

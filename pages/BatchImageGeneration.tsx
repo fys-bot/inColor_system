@@ -990,7 +990,41 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                     </div>
                     {/* Task List Visualization */}
                     <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 p-4">
-                        {tasks.length === 0 ? <div className="text-center text-gray-400 py-10">任务列表为空</div> : (
+                        {tasks.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 px-6">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center mb-5">
+                                    <Icons.AIGenerateIcon className="w-7 h-7 text-primary" />
+                                </div>
+                                <h3 className="text-base font-semibold text-gray-700 mb-1">开始批量生图</h3>
+                                <p className="text-xs text-gray-400 mb-8 text-center max-w-md">按照以下步骤快速上手，数据来源于「搜索管理」中的热搜词和稀缺词</p>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
+                                    <button onClick={() => setIsPromptSettingsModalOpen(true)} className="group flex flex-col items-center gap-2.5 p-5 rounded-xl border-2 border-dashed border-gray-200 hover:border-primary/40 hover:bg-blue-50/30 transition-all text-left">
+                                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                                            <span className="text-sm font-bold text-primary">1</span>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-700">配置生图参数</span>
+                                        <span className="text-[11px] text-gray-400 text-center leading-relaxed">设置提示词模板、AI 模型、图片尺寸和风格</span>
+                                    </button>
+                                    
+                                    <button onClick={() => handleOpenImportModal('hot')} className="group flex flex-col items-center gap-2.5 p-5 rounded-xl border-2 border-dashed border-gray-200 hover:border-primary/40 hover:bg-blue-50/30 transition-all text-left">
+                                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                                            <span className="text-sm font-bold text-primary">2</span>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-700">导入热搜词条</span>
+                                        <span className="text-[11px] text-gray-400 text-center leading-relaxed">从搜索管理自动导入热搜词条，也可手动添加提示词</span>
+                                    </button>
+                                    
+                                    <div className="flex flex-col items-center gap-2.5 p-5 rounded-xl border-2 border-dashed border-gray-200 text-left opacity-60">
+                                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                                            <span className="text-sm font-bold text-gray-400">3</span>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-500">点击「全部生成」</span>
+                                        <span className="text-[11px] text-gray-400 text-center leading-relaxed">AI 将根据配置批量生成图片，完成后可一键上传到素材库</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
                             <div className="space-y-2">
                                 {tasks.map(t => (
                                     <div key={t.id} className="bg-white p-3 rounded shadow-sm flex justify-between items-center">
@@ -1213,8 +1247,9 @@ const BatchImageGeneration: React.FC<BatchImageGenerationProps> = ({
                     initialStyles={generationStyles}
                     initialModelName={aiModelConfig.imageGeneration.modelName}
                     initialDefaultSize={aiModelConfig.imageGeneration.defaultSize || '方形'}
-                    availableImageModels={gatewayImageModels.map(m => m.id)}
-                    availableChatModels={gatewayModels.map(m => m.id)}
+                    availableImageModels={gatewayImageModels}
+                    availableChatModels={gatewayModels}
+                    modelsLoading={isLoadingModels}
                     selectedChatModel={selectedChatModel}
                     selectedImageModel={selectedImageModel}
                     onSave={(newPrompts, newActiveIndex, newStyles, newModelName, newDefaultSize, newChatModel, newImageModel) => {
@@ -1398,13 +1433,14 @@ const PromptSettingsForm: React.FC<{
     initialStyles: AIGenerationStyle[];
     initialModelName: string;
     initialDefaultSize: AIGenerationSize;
-    availableImageModels: string[];
-    availableChatModels: string[];
+    availableImageModels: any[];
+    availableChatModels: any[];
     selectedChatModel: string;
     selectedImageModel: string;
+    modelsLoading?: boolean;
     onSave: (prompts: string[], activeIndex: number, styles: AIGenerationStyle[], modelName: string, defaultSize: AIGenerationSize, chatModel: string, imageModel: string) => void;
     onCancel: () => void;
-}> = ({ initialPrompts, initialActiveIndex, initialStyles, initialModelName, initialDefaultSize, availableImageModels, availableChatModels, selectedChatModel, selectedImageModel, onSave, onCancel }) => {
+}> = ({ initialPrompts, initialActiveIndex, initialStyles, initialModelName, initialDefaultSize, availableImageModels, availableChatModels, selectedChatModel, selectedImageModel, modelsLoading, onSave, onCancel }) => {
     const [prompts, setPrompts] = useState<string[]>(initialPrompts.length > 0 ? initialPrompts : ['']);
     const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
     const [styles, setStyles] = useState<string>(initialStyles.join(', '));
@@ -1414,13 +1450,38 @@ const PromptSettingsForm: React.FC<{
     const [imageModel, setImageModel] = useState(selectedImageModel);
     const [chatFilter, setChatFilter] = useState('');
     const [imageFilter, setImageFilter] = useState('');
+    const [chatExpanded, setChatExpanded] = useState(false);
+    const [imageExpanded, setImageExpanded] = useState(false);
+    const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
+
+    const toggleProvider = (key: string) => setExpandedProviders(prev => ({ ...prev, [key]: !prev[key] }));
+
+    /** 按提供商分组模型（优先用 info.developer，其次 developer / provider，再按 / 分隔） */
+    const groupByProvider = (models: any[]) => {
+        const groups: Record<string, any[]> = {};
+        models.forEach(m => {
+            const id = typeof m === 'string' ? m : m.id;
+            const provider = (typeof m === 'object' && ((m.info && m.info.developer) || m.developer || m.provider)) 
+                ? ((m.info && m.info.developer) || m.developer || m.provider) 
+                : (id.includes('/') ? id.substring(0, id.indexOf('/')) : 'Other');
+            if (!groups[provider]) groups[provider] = [];
+            groups[provider].push({ id, provider, raw: m });
+        });
+        return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+    };
+
+    const chatModelIds = availableChatModels.map((m: any) => typeof m === 'string' ? m : m.id);
+    const imageModelIds = availableImageModels.map((m: any) => typeof m === 'string' ? m : m.id);
 
     const filteredChatModels = chatFilter 
-        ? availableChatModels.filter(m => m.toLowerCase().includes(chatFilter.toLowerCase()))
+        ? availableChatModels.filter((m: any) => (typeof m === 'string' ? m : m.id).toLowerCase().includes(chatFilter.toLowerCase()))
         : availableChatModels;
     const filteredImageModels = imageFilter
-        ? availableImageModels.filter(m => m.toLowerCase().includes(imageFilter.toLowerCase()))
+        ? availableImageModels.filter((m: any) => (typeof m === 'string' ? m : m.id).toLowerCase().includes(imageFilter.toLowerCase()))
         : availableImageModels;
+
+    const chatGroups = groupByProvider(filteredChatModels);
+    const imageGroups = groupByProvider(filteredImageModels);
 
     const handleSave = () => {
         const styleArray = styles.split(',').map(s => s.trim()).filter(s => s !== '');
@@ -1443,21 +1504,80 @@ const PromptSettingsForm: React.FC<{
     return (
         <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 聊天模型 */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">聊天模型 (AI联想/图片分析)</label>
-                    <input type="text" placeholder="搜索模型..." value={chatFilter} onChange={e => setChatFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white mb-1 text-sm" />
-                    <select value={chatModel} onChange={(e) => setChatModel(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white" size={5}>
-                        {filteredChatModels.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                    <p className="text-xs text-gray-400 mt-1">当前: {chatModel} ({availableChatModels.length} 个可用)</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">聊天模型 (AI联想/图片分析)</label>
+                    <div className="px-3 py-2.5 bg-primary/5 border border-primary/20 rounded-lg flex items-center gap-2 mb-2">
+                        <span className="text-xs text-gray-500">当前:</span>
+                        <span className="inline-flex items-center px-2.5 py-1 bg-primary text-white rounded-md font-semibold text-xs shadow-sm">{chatModel}</span>
+                        <button onClick={() => setChatExpanded(!chatExpanded)} className="ml-auto text-[11px] text-primary hover:underline flex items-center gap-0.5">
+                            {chatExpanded ? '收起' : '更换模型'}
+                            <Icons.ChevronDownIcon className={`w-3 h-3 transition-transform ${chatExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                    {chatExpanded && (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <input type="text" placeholder="搜索模型..." value={chatFilter} onChange={e => setChatFilter(e.target.value)} className="w-full px-3 py-2 border-b border-gray-200 bg-gray-50 text-sm outline-none" />
+                            <div className="max-h-[200px] overflow-y-auto">
+                                {modelsLoading && availableChatModels.length === 0 ? (
+                                    <div className="flex items-center justify-center gap-2 py-6 text-gray-400 text-xs"><Spinner size="sm" /> 加载模型列表...</div>
+                                ) : chatGroups.map(([provider, models]) => (
+                                    <div key={`chat-${provider}`}>
+                                        <button onClick={() => toggleProvider(`chat-${provider}`)} className="w-full flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-xs font-semibold text-gray-600 sticky top-0">
+                                            <Icons.ChevronRightIcon className={`w-3 h-3 transition-transform ${expandedProviders[`chat-${provider}`] !== false ? 'rotate-90' : ''}`} />
+                                            {provider} <span className="text-gray-400 font-normal">({models.length})</span>
+                                        </button>
+                                        {expandedProviders[`chat-${provider}`] !== false && models.map((m: any) => (
+                                            <button key={m.id} onClick={() => { setChatModel(m.id); setChatExpanded(false); }}
+                                                className={`w-full text-left px-6 py-1.5 text-xs hover:bg-blue-50 transition-colors ${chatModel === m.id ? 'bg-primary/10 text-primary font-medium' : 'text-gray-700'}`}>
+                                                {m.id}
+                                                {chatModel === m.id && <Icons.CheckIcon className="w-3 h-3 inline ml-1.5" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="px-3 py-1.5 text-[10px] text-gray-400 bg-gray-50 border-t">{chatModelIds.length} 个模型可用</p>
+                        </div>
+                    )}
                 </div>
+
+                {/* 图片生成模型 */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">图片生成模型</label>
-                    <input type="text" placeholder="搜索模型..." value={imageFilter} onChange={e => setImageFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white mb-1 text-sm" />
-                    <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white" size={5}>
-                        {filteredImageModels.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                    <p className="text-xs text-gray-400 mt-1">当前: {imageModel} ({availableImageModels.length} 个可用)</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">图片生成模型</label>
+                    <div className="px-3 py-2.5 bg-primary/5 border border-primary/20 rounded-lg flex items-center gap-2 mb-2">
+                        <span className="text-xs text-gray-500">当前:</span>
+                        <span className="inline-flex items-center px-2.5 py-1 bg-primary text-white rounded-md font-semibold text-xs shadow-sm">{imageModel}</span>
+                        <button onClick={() => setImageExpanded(!imageExpanded)} className="ml-auto text-[11px] text-primary hover:underline flex items-center gap-0.5">
+                            {imageExpanded ? '收起' : '更换模型'}
+                            <Icons.ChevronDownIcon className={`w-3 h-3 transition-transform ${imageExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                    {imageExpanded && (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <input type="text" placeholder="搜索模型..." value={imageFilter} onChange={e => setImageFilter(e.target.value)} className="w-full px-3 py-2 border-b border-gray-200 bg-gray-50 text-sm outline-none" />
+                            <div className="max-h-[200px] overflow-y-auto">
+                                {modelsLoading && availableImageModels.length === 0 ? (
+                                    <div className="flex items-center justify-center gap-2 py-6 text-gray-400 text-xs"><Spinner size="sm" /> 加载模型列表...</div>
+                                ) : imageGroups.map(([provider, models]) => (
+                                    <div key={`img-${provider}`}>
+                                        <button onClick={() => toggleProvider(`img-${provider}`)} className="w-full flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-xs font-semibold text-gray-600 sticky top-0">
+                                            <Icons.ChevronRightIcon className={`w-3 h-3 transition-transform ${expandedProviders[`img-${provider}`] !== false ? 'rotate-90' : ''}`} />
+                                            {provider} <span className="text-gray-400 font-normal">({models.length})</span>
+                                        </button>
+                                        {expandedProviders[`img-${provider}`] !== false && models.map((m: any) => (
+                                            <button key={m.id} onClick={() => { setImageModel(m.id); setImageExpanded(false); }}
+                                                className={`w-full text-left px-6 py-1.5 text-xs hover:bg-blue-50 transition-colors ${imageModel === m.id ? 'bg-primary/10 text-primary font-medium' : 'text-gray-700'}`}>
+                                                {m.id}
+                                                {imageModel === m.id && <Icons.CheckIcon className="w-3 h-3 inline ml-1.5" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="px-3 py-1.5 text-[10px] text-gray-400 bg-gray-50 border-t">{imageModelIds.length} 个模型可用</p>
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1475,9 +1595,15 @@ const PromptSettingsForm: React.FC<{
             </div>
 
             <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-1">
                     <label className="block text-sm font-medium text-gray-700">预制提示词模版 (Templates)</label>
                     <button onClick={addPrompt} className="text-sm text-primary hover:underline">+ 添加模版</button>
+                </div>
+                <div className="flex items-center gap-3 mb-3 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                    <Icons.InfoIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <p className="text-[11px] text-gray-500 leading-relaxed">
+                        模版中使用占位符自动替换：<code className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded font-mono font-semibold text-[11px]">{'{subject}'}</code> = 搜索词/主题（如 cat、flower），<code className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded font-mono font-semibold text-[11px]">{'{style}'}</code> = 上方「可用风格列表」中的风格（如 Line Art、Anime）
+                    </p>
                 </div>
                 <div className="space-y-3">
                     {prompts.map((prompt, index) => (
@@ -1488,8 +1614,8 @@ const PromptSettingsForm: React.FC<{
                             <textarea 
                                 value={prompt} 
                                 onChange={(e) => handlePromptChange(index, e.target.value)} 
-                                className={`flex-1 p-2 border rounded-md text-sm ${activeIndex === index ? 'border-primary ring-1 ring-primary' : 'border-gray-300'}`}
-                                rows={2}
+                                className={`flex-1 p-2.5 border rounded-md text-sm leading-relaxed ${activeIndex === index ? 'border-primary ring-1 ring-primary' : 'border-gray-300'}`}
+                                rows={5}
                                 placeholder="输入提示词模版，使用 {subject} 和 {style} 作为占位符..."
                             />
                             <button onClick={() => removePrompt(index)} className="p-2 text-gray-400 hover:text-red-500">

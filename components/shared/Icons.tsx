@@ -8,7 +8,7 @@ import {
     Archive, X, Eye, EyeOff, Edit, Check, Undo2, ShieldCheck, Bell, CreditCard, Trash2,
     Languages, Info, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Download, Filter,
     Plus, Link, Home, Menu, Tag, Minus, Calendar, ChevronsLeft, ChevronsRight, RefreshCw,
-    Cpu, Bug, Code2, CloudUpload, Heart, type LucideProps
+    Cpu, Bug, Code2, CloudUpload, Heart, ImageOff, Inbox, type LucideProps
 } from 'lucide-react';
 
 export const HomeIcon: React.FC<LucideProps> = (props) => <Home {...props} />;
@@ -97,3 +97,5 @@ export const AIModelIcon: React.FC<LucideProps> = (props) => <Cpu {...props} />;
 export const BugIcon: React.FC<LucideProps> = (props) => <Bug {...props} />;
 export const CodeIcon: React.FC<LucideProps> = (props) => <Code2 {...props} />;
 export const HeartIcon: React.FC<LucideProps> = (props) => <Heart {...props} />;
+export const ImageOffIcon: React.FC<LucideProps> = (props) => <ImageOff {...props} />;
+export const InboxIcon: React.FC<LucideProps> = (props) => <Inbox {...props} />;

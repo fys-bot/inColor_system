@@ -111,10 +111,10 @@ const mergeWithCache = (item: any) => {
  */
 const getStatusBadge = (status: ReportState) => {
     switch (status) {
-        case 'pending': return <span className="px-2 py-1 text-xs font-medium text-blue-800 bg-blue-100 rounded-full">待处理</span>;
-        case 'block': return <span className="px-2 py-1 text-xs font-medium text-red-800 bg-red-100 rounded-full">已拒审</span>;
-        case 'deleted': return <span className="px-2 py-1 text-xs font-medium text-red-800 bg-red-100 rounded-full">已拒审</span>;
-        case 'ignore': return <span className="px-2 py-1 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">已通过</span>;
+        case 'pending': return <span className="px-1.5 py-0.5 text-[10px] font-medium text-blue-700 bg-blue-50 rounded">待处理</span>;
+        case 'block': return <span className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-50 rounded">已拒审</span>;
+        case 'deleted': return <span className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-50 rounded">已拒审</span>;
+        case 'ignore': return <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 rounded">已忽略</span>;
         default: return null;
     }
 };
@@ -324,9 +324,8 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     }
 
     const bannedUsers = useMemo(() => {
-        const bannedUids = new Set(currentList.filter(u => u.state === 'block').map(u => u.uid));
-        return users.filter(user => bannedUids.has(user.id));
-    }, [currentList, users]);
+        return (userReports?.block || []).map(item => mergeWithCache(item));
+    }, [userReports]);
 
     /**
      * 处理排序请求，循环切换排序状态（降序 -> 升序 -> 不排序）。
@@ -523,36 +522,40 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     const renderReportContent = (report: UserReports & { _isCached?: boolean }) => {
         const hasImage = !!report?.url;
         const hasComment = !!report?.comment;
-        if (!hasImage && !hasComment) return null;
+
+        if (!hasImage && !hasComment) {
+            return (
+                <div className="flex items-center gap-2 text-gray-300">
+                    <div className="h-10 w-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center flex-shrink-0">
+                        <Icons.ImageOffIcon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[11px]">内容已删除</span>
+                </div>
+            );
+        }
 
         return (
-            <div className="flex items-start space-x-3 w-full max-w-sm">
+            <div className="flex items-center gap-2.5 max-w-xs">
                 {hasImage && (
-                    <div className="relative">
+                    <div className="relative flex-shrink-0">
                         <img
                             src={report?.url || ''}
                             alt="reported"
-                            className="h-16 w-16 object-cover rounded-md cursor-pointer flex-shrink-0 border border-gray-200"
+                            className="h-10 w-10 object-cover rounded cursor-pointer border border-gray-200 hover:border-primary/40 transition-colors"
                             onClick={(e) => { e.stopPropagation(); showPreview(report?.url); }}
                             onError={(e) => {
-                                // 简单的错误处理，如果图片挂了显示占位
-                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64?text=Error';
+                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/40?text=X';
                             }}
                         />
                         {report._isCached && (
-                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" title="从本地缓存加载"></span>
-                            </span>
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500 ring-1 ring-white" title="缓存" />
                         )}
                     </div>
                 )}
                 {hasComment && (
-                    <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm text-gray-700" title={report?.comment}>
-                            {report?.comment}
-                        </p>
-                    </div>
+                    <p className="text-xs text-gray-600 truncate leading-relaxed" title={report?.comment}>
+                        {report?.comment}
+                    </p>
                 )}
             </div>
         );
@@ -576,28 +579,56 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
     const renderActions = (report: UserReports) => {
         if (subTab === 'pending') {
             return (
-                <div className="flex items-center space-x-1">
-                    <Tooltip content="拒审"><button onClick={(e) => { e.stopPropagation(); handleAction([report], 'delete') }} className="p-1.5 text-danger hover:bg-red-100 rounded-full"><Icons.DeleteIcon className="w-4 h-4" /></button></Tooltip>
-                    <Tooltip content="通过审核"><button onClick={(e) => { e.stopPropagation(); handleAction([report], 'ignore') }} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-full"><Icons.CheckIcon className="w-4 h-4" /></button></Tooltip>
-                    <Tooltip content="封禁用户"><button onClick={(e) => { e.stopPropagation(); openBanModal(report.uid) }} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-full"><Icons.ShieldCheckIcon className="w-4 h-4" /></button></Tooltip>
+                <div className="flex items-center gap-0.5">
+                    <Tooltip content="拒审"><button onClick={(e) => { e.stopPropagation(); handleAction([report], 'delete') }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"><Icons.DeleteIcon className="w-3.5 h-3.5" /></button></Tooltip>
+                    <Tooltip content="通过"><button onClick={(e) => { e.stopPropagation(); handleAction([report], 'ignore') }} className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"><Icons.CheckIcon className="w-3.5 h-3.5" /></button></Tooltip>
+                    <Tooltip content="封禁"><button onClick={(e) => { e.stopPropagation(); openBanModal(report.uid) }} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md transition-colors"><Icons.ShieldCheckIcon className="w-3.5 h-3.5" /></button></Tooltip>
                 </div>
             );
         }
         return (
-            <div className="flex items-center space-x-1">
-                 <Tooltip content="恢复"><button onClick={(e) => { e.stopPropagation(); handleRestoreReport(report) }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-full"><Icons.RevertIcon className="w-4 h-4" /></button></Tooltip>
-                <Tooltip content="彻底删除"><button onClick={(e) => { e.stopPropagation(); handleDeleteClick([report]) }} className="p-1.5 text-danger hover:bg-red-100 rounded-full"><Icons.DeleteIcon className="w-4 h-4" /></button></Tooltip>
+            <div className="flex items-center gap-0.5">
+                 <Tooltip content="恢复"><button onClick={(e) => { e.stopPropagation(); handleRestoreReport(report) }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Icons.RevertIcon className="w-3.5 h-3.5" /></button></Tooltip>
+                <Tooltip content="删除"><button onClick={(e) => { e.stopPropagation(); handleDeleteClick([report]) }} className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"><Icons.DeleteIcon className="w-3.5 h-3.5" /></button></Tooltip>
             </div>
         );
     };
 
+    /** 举报原因渲染为标签 */
+    const renderReasons = (report: UserReports) => {
+        const reasons = Object.keys(report.reasons || {}).map(k => reportReasons[k]).filter(Boolean);
+        if (reasons.length === 0) return <span className="text-gray-300 text-xs">—</span>;
+        return (
+            <div className="flex flex-wrap gap-1">
+                {reasons.map((r, i) => (
+                    <span key={i} className="inline-block px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] rounded font-medium leading-tight">{r}</span>
+                ))}
+            </div>
+        );
+    };
+
+    /** 格式化时间为完整格式 */
+    const formatCompactTime = (timeStr: string) => {
+        if (!timeStr) return '—';
+        try {
+            const d = new Date(timeStr);
+            if (isNaN(d.getTime())) return timeStr;
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${day} ${h}:${min}`;
+        } catch { return timeStr; }
+    };
+
     const renderSortableHeader = (label: string, sortKey: 'reportedUserCount' | 'timestamp') => (
-        <th scope="col" className="py-3 px-6 whitespace-nowrap bg-gray-50 cursor-pointer" onClick={() => requestSort(sortKey)}>
-            <div className="flex items-center">
+        <th scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 cursor-pointer hover:bg-gray-100/60 transition-colors" onClick={() => requestSort(sortKey)}>
+            <div className="flex items-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
                 {label}
                 {sortConfig?.key === sortKey ? (
-                    sortConfig.direction === 'asc' ? <Icons.ChevronUpIcon className="w-4 h-4 ml-1" /> : <Icons.ChevronDownIcon className="w-4 h-4 ml-1" />
-                ) : <div className="w-4 h-4 ml-1"></div>}
+                    sortConfig.direction === 'asc' ? <Icons.ChevronUpIcon className="w-3 h-3 ml-0.5 text-primary" /> : <Icons.ChevronDownIcon className="w-3 h-3 ml-0.5 text-primary" />
+                ) : <div className="w-3 h-3 ml-0.5"></div>}
             </div>
         </th>
     );
@@ -681,24 +712,31 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
                             <div className="lg:hidden">
                                 {subTab === 'banned' ? (
                                     <div className="divide-y divide-gray-200">
-                                        {bannedUsers.map(user => (
-                                            <div key={user.id} className={`p-4 space-y-2 transition-colors duration-1000 ${recentlyModifiedUserId === user.id ? 'bg-yellow-100' : ''}`}>
+                                        {bannedUsers.length === 0 ? (
+                                            <div className="flex flex-col items-center gap-2 py-20">
+                                                <Icons.InboxIcon className="w-10 h-10 text-gray-200" />
+                                                <p className="text-gray-400 text-xs">暂无封禁用户</p>
+                                            </div>
+                                        ) : bannedUsers.map(item => (
+                                            <div key={item.id} className={`p-4 space-y-2 transition-colors duration-1000 ${recentlyModifiedUserId === item.uid ? 'bg-yellow-100' : ''}`}>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="font-mono text-gray-800">{user.id}</span>
+                                                    <span className="font-mono text-gray-800 text-sm">{item.uid}</span>
                                                 </div>
-                                                <p><strong className="font-medium text-gray-600">类型:</strong> {user.banDetails?.type === 'mute' ? '禁止发言' : '禁止发布'}</p>
-                                                <p><strong className="font-medium text-gray-600">理由:</strong> {user.banDetails?.reason}</p>
-                                                <p><strong className="font-medium text-gray-600">解封时间:</strong> {user.banDetails?.duration === 36500 ? '永久' : new Date(user.banDetails?.bannedUntil || '').toLocaleString()}</p>
-                                                <div className="flex items-center space-x-2 pt-2">
-                                                    <button onClick={() => handleModifyBan(user)} className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded-md">修改</button>
-                                                    <button onClick={() => handleUnbanUser(user.id)} className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded-md">解封</button>
-                                                </div>
+                                                {item.url && <img src={item.url} alt="" className="h-10 w-10 rounded object-cover border cursor-pointer" onClick={() => showPreview(item.url)} />}
+                                                <p><strong className="font-medium text-gray-600">举报原因:</strong> {Object.keys(item.reasons || {}).map(k => reportReasons[k]).join('、')}</p>
+                                                <p><strong className="font-medium text-gray-600">举报次数:</strong> <span className="font-bold text-red-600">{item.count}</span></p>
+                                                <p className="text-xs text-gray-500">封禁时间: {item.updatedAt || item.createdAt}</p>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-gray-200">
-                                        {currentList.map(report => (
+                                        {currentList.length === 0 ? (
+                                            <div className="flex flex-col items-center gap-2 py-20">
+                                                <Icons.InboxIcon className="w-12 h-12 text-gray-200" />
+                                                <p className="text-gray-400 text-sm">{subTab === 'pending' ? '暂无待处理的举报' : '暂无已处理的举报'}</p>
+                                            </div>
+                                        ) : currentList.map(report => (
                                             <div
                                                 key={report.id}
                                                 className={`p-4 space-y-3 cursor-pointer hover:bg-gray-50 ${selectedItems.map(s => s.id).includes(report.id) ? 'bg-blue-50' : ''}`}
@@ -713,7 +751,6 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
                                                         {getStatusBadge(report.state)}
                                                     </div>
                                                 </div>
-                                                <div><strong className="font-medium text-gray-600">翻译:</strong> <div className="inline-block ml-2" onClick={e => e.stopPropagation()}>{renderTranslation(report)}</div></div>
                                                 <div><strong className="font-medium text-gray-600">原因:</strong> {Object.keys(report.reasons || {}).map(k => reportReasons[k]).join('、')}</div>
                                                 <div><strong className="font-medium text-gray-600">被举报用户:</strong> <button onClick={(e) => { e.stopPropagation(); openUserModal(report.uid) }} className="font-mono text-primary hover:underline">{report.uid}</button></div>
                                                 <div><strong className="font-medium text-gray-600">被举报次数:</strong> <span className="font-bold text-red-600">{report.count}</span></div>
@@ -732,61 +769,91 @@ const CommunityManagement: React.FC<CommunityManagementProps> = ({ reports, setR
                             ) || (
                                     <div className="hidden lg:block">
                                         {subTab === 'banned' ? (
-                                            <table className="w-full text-sm text-left text-gray-500">
-                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-10"><tr>{['用户 ID', '封禁类型', '封禁理由', '解封时间', '操作'].map(h => <th key={h} scope="col" className="py-3 px-6 whitespace-nowrap bg-gray-50">{h}</th>)}</tr></thead>
-                                                <tbody>{bannedUsers.map(user => (<tr key={user.id} className={`bg-white border-b hover:bg-gray-50 transition-colors duration-1000 ${recentlyModifiedUserId === user.id ? 'bg-yellow-100' : ''}`}>
-                                                    <td className="py-4 px-6 font-mono">{user.id}</td>
-                                                    <td className="py-4 px-6">{user.banDetails?.type === 'mute' ? '禁止发言' : '禁止发布'}</td>
-                                                    <td className="py-4 px-6"><p className="max-w-xs truncate" title={user.banDetails?.reason}>{user.banDetails?.reason}</p></td>
-                                                    <td className="py-4 px-6 whitespace-nowrap">{user.banDetails?.duration === 36500 ? '永久' : new Date(user.banDetails?.bannedUntil || '').toLocaleString()}</td>
-                                                    <td className="py-4 px-6">
-                                                        <div className="flex items-center space-x-1">
-                                                            <Tooltip content="修改封禁"><button onClick={() => handleModifyBan(user)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-full"><Icons.EditIcon className="w-4 h-4" /></button></Tooltip>
-                                                            <Tooltip content="解封用户"><button onClick={() => handleUnbanUser(user.id)} className="p-1.5 text-green-600 hover:bg-green-100 rounded-full"><Icons.RevertIcon className="w-4 h-4" /></button></Tooltip>
-                                                        </div>
-                                                    </td>
-                                                </tr>))}</tbody>
+                                            <table className="w-full text-xs text-left text-gray-600">
+                                                <thead className="sticky top-0 z-10">
+                                                    <tr className="border-b border-gray-200">
+                                                        {['用户 ID', '举报内容', '举报原因', '举报次数', '封禁时间'].map(h => <th key={h} scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {bannedUsers.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={5} className="py-20 text-center">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    <Icons.InboxIcon className="w-10 h-10 text-gray-200" />
+                                                                    <p className="text-gray-400 text-xs">暂无封禁用户</p>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ) : bannedUsers.map(item => (
+                                                        <tr key={item.id} className={`hover:bg-gray-50/50 transition-colors ${recentlyModifiedUserId === item.uid ? 'bg-yellow-50' : ''}`}>
+                                                            <td className="py-2.5 px-3 font-mono text-[11px]">
+                                                                <button onClick={() => openUserModal(item.uid)} className="text-primary hover:underline truncate block max-w-[140px]" title={item.uid}>{item.uid}</button>
+                                                            </td>
+                                                            <td className="py-2.5 px-3">{renderReportContent(item)}</td>
+                                                            <td className="py-2.5 px-3 max-w-[180px]">{renderReasons(item)}</td>
+                                                            <td className="py-2.5 px-3 text-center">
+                                                                <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold ${item.count >= 3 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{item.count}</span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 whitespace-nowrap text-gray-400 text-[11px]">{formatCompactTime(item.updatedAt || item.createdAt)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
                                             </table>
                                         ) : (
-                                            <table className="w-full text-sm text-left text-gray-500">
-                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-10">
-                                                    <tr>
-                                                        <th scope="col" className="p-4 bg-gray-50 sticky left-0 z-20">
+                                            <table className="w-full text-xs text-left text-gray-600">
+                                                <thead className="sticky top-0 z-10">
+                                                    <tr className="border-b border-gray-200">
+                                                        <th scope="col" className="py-2.5 px-3 bg-gray-50/80 sticky left-0 z-20 w-10">
                                                             <input
                                                                 type="checkbox"
                                                                 onChange={e => handleSelectAll(e.target.checked)}
                                                                 checked={selectedItems.length > 0 && selectedItems.length === currentList.length && currentList.length > 0}
-                                                                className="form-checkbox h-4 w-4 text-primary rounded focus:ring-primary"
+                                                                className="form-checkbox h-3.5 w-3.5 text-primary rounded focus:ring-primary"
                                                             />
                                                         </th>
-                                                        {['被举报内容', '翻译', '举报原因', '举报人 ID', '被举报用户 ID'].map(h => <th key={h} scope="col" className="py-3 px-6 whitespace-nowrap bg-gray-50">{h}</th>)}
-                                                        {renderSortableHeader('被举报次数', 'reportedUserCount')}
+                                                        {['举报内容', '举报原因', '举报人', '被举报用户'].map(h => <th key={h} scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}
+                                                        {renderSortableHeader('次数', 'reportedUserCount')}
                                                         {renderSortableHeader('举报时间', 'timestamp')}
-                                                        {subTab === 'processed' && <th scope="col" className="py-3 px-6 whitespace-nowrap bg-gray-50">处理时间</th>}
-                                                        <th scope="col" className="min-w-[120px] py-3 px-6 whitespace-nowrap bg-gray-50">状态</th>
-                                                        <th scope="col" className="py-3 px-6 whitespace-nowrap bg-gray-50">操作</th>
+                                                        {subTab === 'processed' && <th scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">处理时间</th>}
+                                                        <th scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">状态</th>
+                                                        <th scope="col" className="py-2.5 px-3 whitespace-nowrap bg-gray-50/80 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">操作</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody>
-                                                    {currentList.map(report => (
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {currentList.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={subTab === 'processed' ? 10 : 9} className="py-20 text-center">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    <Icons.InboxIcon className="w-10 h-10 text-gray-200" />
+                                                                    <p className="text-gray-400 text-xs">{subTab === 'pending' ? '暂无待处理的举报' : '暂无已处理的举报'}</p>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ) : currentList.map(report => (
                                                         <tr
                                                             key={report.id}
-                                                            className={`bg-white border-b hover:bg-gray-50 cursor-pointer ${selectedItems.map(s => s.id).includes(report.id) ? 'bg-blue-50' : ''}`}
+                                                            className={`hover:bg-blue-50/30 cursor-pointer transition-colors ${selectedItems.map(s => s.id).includes(report.id) ? 'bg-blue-50/50' : ''}`}
                                                             onClick={() => handleSelect(report.id, !selectedItems.map(s => s.id).includes(report.id))}
                                                         >
-                                                            <td className="p-4 bg-white sticky left-0 z-10" onClick={e => e.stopPropagation()}>
-                                                                <input type="checkbox" checked={selectedItems.map(s => s.id).includes(report.id)} onChange={e => handleSelect(report.id, e.target.checked)} className="form-checkbox h-4 w-4 text-primary rounded focus:ring-primary" />
+                                                            <td className="py-2.5 px-3 sticky left-0 z-10 bg-white" onClick={e => e.stopPropagation()}>
+                                                                <input type="checkbox" checked={selectedItems.map(s => s.id).includes(report.id)} onChange={e => handleSelect(report.id, e.target.checked)} className="form-checkbox h-3.5 w-3.5 text-primary rounded focus:ring-primary" />
                                                             </td>
-                                                            <td className="py-4 px-6" onClick={e => e.stopPropagation()}>{renderReportContent(report)}</td>
-                                                            <td className="py-4 px-6" onClick={e => e.stopPropagation()}><div className="min-w-[120px]">{renderTranslation(report)}</div></td>
-                                                            <td className="min-w-[200px] py-4 px-6">{Object.keys(report.reasons || {}).map(k => reportReasons[k]).join('、')}</td>
-                                                            <td className="py-4 px-6 font-mono">{(report.uids || []).join('、')}</td>
-                                                            <td className="py-4 px-6 font-mono" onClick={e => e.stopPropagation()}><button onClick={() => openUserModal(report.uid)} className="text-primary hover:underline">{report.uid}</button></td>
-                                                            <td className="py-4 px-6 font-bold text-red-600 text-center">{report.count}</td>
-                                                            <td className="py-4 px-6 whitespace-nowrap">{report.createdAt}</td>
-                                                            {subTab === 'processed' && <td className="py-4 px-6 whitespace-nowrap">{report.updatedAt || '—'}</td>}
-                                                            <td className="min-w-[120px] py-4 px-6">{getStatusBadge(report.state)}</td>
-                                                            <td className="py-4 px-6" onClick={e => e.stopPropagation()}>{renderActions(report)}</td>
+                                                            <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>{renderReportContent(report)}</td>
+                                                            <td className="py-2.5 px-3 max-w-[180px]">{renderReasons(report)}</td>
+                                                            <td className="py-2.5 px-3">
+                                                                <span className="font-mono text-[10px] text-gray-400 truncate block max-w-[120px]" title={(report.uids || []).join(', ')}>{(report.uids || []).slice(0, 1).join('')}{(report.uids || []).length > 1 ? ` +${(report.uids || []).length - 1}` : ''}</span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>
+                                                                <span className="font-mono text-[10px] text-gray-600 truncate block max-w-[140px]" title={report.uid}>{report.uid}</span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-center">
+                                                                <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold ${report.count >= 3 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{report.count}</span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 whitespace-nowrap text-gray-400 text-[11px]">{formatCompactTime(report.createdAt)}</td>
+                                                            {subTab === 'processed' && <td className="py-2.5 px-3 whitespace-nowrap text-gray-400 text-[11px]">{formatCompactTime(report.updatedAt)}</td>}
+                                                            <td className="py-2.5 px-3">{getStatusBadge(report.state)}</td>
+                                                            <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>{renderActions(report)}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

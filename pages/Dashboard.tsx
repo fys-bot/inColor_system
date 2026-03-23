@@ -79,6 +79,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage, assets, themedBoo
     const [refreshing, setRefreshing] = useState(false);
     const [range, setRange] = useState<TimeRange>('7d');
     const [d, setD] = useState<DashboardData>(emptyData);
+    const [modelStats, setModelStats] = useState<any>(null);
+    const [modelStatsLoading, setModelStatsLoading] = useState(false);
 
     const fetchData = useCallback(async (r: TimeRange) => {
         setLoading(true);
@@ -89,11 +91,20 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage, assets, themedBoo
         finally { setLoading(false); }
     }, []);
 
-    useEffect(() => { fetchData(range); }, [range, fetchData]);
+    const fetchModelStats = useCallback(async (r: TimeRange) => {
+        setModelStatsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/dashboard/model-stats?range=${r}`).then(x => x.json());
+            if (res.data) setModelStats(res.data);
+        } catch (e) { console.error(e); }
+        finally { setModelStatsLoading(false); }
+    }, []);
+
+    useEffect(() => { fetchData(range); fetchModelStats(range); }, [range, fetchData, fetchModelStats]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
-        await Promise.all([fetchData(range), refreshAssets()]);
+        await Promise.all([fetchData(range), fetchModelStats(range), refreshAssets()]);
         setRefreshing(false);
     };
 
@@ -193,13 +204,76 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage, assets, themedBoo
                 </>)}
             </div>
 
+            {/* ── 内置素材构成 ── */}
+            <div className="bg-white rounded-xl border p-5">
+                <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm font-bold text-gray-700">内置素材构成</p>
+                    <button onClick={() => setCurrentPage('assets')} className="text-xs text-primary hover:underline">管理素材</button>
+                </div>
+                {assetsLoading ? <div className="flex items-center justify-center py-8"><Spinner size="lg" /></div> : (
+                    <div className="space-y-5">
+                        {/* 概览数字 */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="bg-gray-50 rounded-lg p-3 text-center">
+                                <p className="text-2xl font-bold text-gray-800">{assetStats.total.toLocaleString()}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">单图素材</p>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-3 text-center">
+                                <p className="text-2xl font-bold text-blue-700">{assetStats.aiCount.toLocaleString()}</p>
+                                <p className="text-[10px] text-blue-500 mt-0.5">AI 生成 · {assetStats.total > 0 ? Math.round((assetStats.aiCount / assetStats.total) * 100) : 0}%</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-3 text-center">
+                                <p className="text-2xl font-bold text-gray-800">{assetStats.bookCount + assetStats.artistBookCount}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">主题图册</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-3 text-center">
+                                <p className="text-2xl font-bold text-gray-800">{assetStats.totalPatterns.toLocaleString()}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">图册内图片</p>
+                            </div>
+                        </div>
+
+                        {/* 全部分类 — 单列 */}
+                        <div>
+                            <p className="text-xs text-gray-400 font-medium mb-3">素材分类分布</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5">
+                                <BarRow label="每日更新" value={assetStats.byType['Daily'] || 0} max={assetStats.total} color="bg-amber-400" />
+                                <BarRow label="主页图" value={assetStats.byType['Homepage'] || 0} max={assetStats.total} color="bg-indigo-400" />
+                                <BarRow label="分类图库" value={assetStats.byType['Categorized'] || 0} max={assetStats.total} color="bg-blue-400" />
+                                <BarRow label="灰度图" value={assetStats.byType['Grayscale'] || 0} max={assetStats.total} color="bg-gray-400" />
+                                <BarRow label="活动图" value={assetStats.byType['Activity'] || 0} max={assetStats.total} color="bg-pink-400" />
+                                <BarRow label="普通图册" value={assetStats.bookCount} max={assetStats.total} color="bg-teal-400" />
+                                <BarRow label="艺术家图册" value={assetStats.artistBookCount} max={assetStats.total} color="bg-orange-400" />
+                                <BarRow label="图册内图片" value={assetStats.totalPatterns} max={assetStats.total} color="bg-violet-400" />
+                            </div>
+                        </div>
+
+                        {/* 热门标签 */}
+                        {assetStats.topTags.length > 0 && (
+                            <div>
+                                <p className="text-xs text-gray-400 font-medium mb-2">热门标签</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {assetStats.topTags.map(([tag, count]) => (
+                                        <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-[11px]">
+                                            {tag} <span className="text-gray-400">{count}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
             {/* ── 生图趋势 ── */}
             <div className="bg-white rounded-xl border p-5">
                 <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-bold text-gray-700">生图趋势 · {rangeLabels[range]}</p>
-                    {!L && d.peakHours && d.peakHours.length > 0 && (
-                        <span className="text-[11px] text-gray-400">高峰 {d.peakHours.map((h: any) => `${h.hour}:00`).join('、')}</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                        {!L && d.peakHours && d.peakHours.length > 0 && (
+                            <span className="text-[11px] text-gray-400">高峰 {d.peakHours.map((h: any) => `${h.hour}:00`).join('、')}</span>
+                        )}
+                        <button onClick={() => setCurrentPage('ai-generations')} className="text-xs text-primary hover:underline">生图记录</button>
+                    </div>
                 </div>
                 {L ? <div className="flex items-center justify-center h-[200px]"><Spinner size="lg" /></div> : (
                     d.weeklyGenerations.length > 0 ? (
@@ -226,81 +300,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage, assets, themedBoo
             {!L && d.styleDistribution.length > 0 && (
                 <div className="bg-white rounded-xl border p-5">
                     <p className="text-sm font-bold text-gray-700 mb-3">热门生图风格 · {rangeLabels[range]}</p>
-                    <ResponsiveContainer width="100%" height={Math.max(d.styleDistribution.length * 40, 120)}>
-                        <BarChart data={d.styleDistribution} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                            <XAxis type="number" tick={{ fontSize: 11 }} stroke="#e5e7eb" />
-                            <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12 }} stroke="#e5e7eb" />
-                            <RechartsTooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                            <Bar dataKey="count" name="数量" fill="#818cf8" radius={[0, 4, 4, 0]} barSize={20} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    <div className="space-y-2">
+                        {d.styleDistribution.map((s: any) => (
+                            <BarRow key={s.name} label={s.name} value={s.count} max={d.styleDistribution[0]?.count || 1} color="bg-indigo-400" />
+                        ))}
+                    </div>
                 </div>
             )}
 
-            {/* ── 内置素材构成（重点细分） ── */}
-            <div className="bg-white rounded-xl border p-5">
-                <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm font-bold text-gray-700">内置素材构成</p>
-                    <button onClick={() => setCurrentPage('assets')} className="text-xs text-primary hover:underline">管理素材</button>
-                </div>
-                {assetsLoading ? <div className="flex items-center justify-center py-8"><Spinner size="lg" /></div> : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* 左侧：单图分类 */}
-                        <div>
-                            <p className="text-xs text-gray-400 font-medium mb-3">单图素材 · 共 {assetStats.total.toLocaleString()} 张</p>
-                            <div className="space-y-2.5">
-                                <BarRow label="分类图库" value={assetStats.byType['Categorized'] || 0} max={assetStats.total} color="bg-blue-400" />
-                                <BarRow label="每日更新" value={assetStats.byType['Daily'] || 0} max={assetStats.total} color="bg-amber-400" />
-                                <BarRow label="活动图" value={assetStats.byType['Activity'] || 0} max={assetStats.total} color="bg-pink-400" />
-                                <BarRow label="灰度图" value={assetStats.byType['Grayscale'] || 0} max={assetStats.total} color="bg-gray-400" />
-                                <BarRow label="主页图" value={assetStats.byType['Homepage'] || 0} max={assetStats.total} color="bg-indigo-400" />
-                            </div>
-                            {assetStats.aiCount > 0 && (
-                                <p className="text-[11px] text-gray-400 mt-3">其中 AI 生成素材 {assetStats.aiCount} 张（{Math.round((assetStats.aiCount / assetStats.total) * 100)}%）</p>
-                            )}
-                        </div>
-
-                        {/* 右侧：图册 + 标签 */}
-                        <div className="space-y-5">
-                            {/* 图册统计 */}
-                            <div>
-                                <p className="text-xs text-gray-400 font-medium mb-3">主题图册</p>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                                        <p className="text-xl font-bold text-gray-800">{assetStats.bookCount}</p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">普通图册</p>
-                                    </div>
-                                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                                        <p className="text-xl font-bold text-gray-800">{assetStats.artistBookCount}</p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">艺术家图册</p>
-                                    </div>
-                                    <div className="bg-gray-50 rounded-lg p-3 text-center">
-                                        <p className="text-xl font-bold text-gray-800">{assetStats.totalPatterns}</p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">图册内图片</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 热门标签 */}
-                            {assetStats.topTags.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-gray-400 font-medium mb-2">热门标签</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {assetStats.topTags.map(([tag, count]) => (
-                                            <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-[11px]">
-                                                {tag} <span className="text-gray-400">{count}</span>
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* ── 搜索热词（有数据才显示） ── */}
+            {/* ── 生图趋势 ── */}
             {!L && d.topSearchTerms && d.topSearchTerms.length > 0 && (
                 <div className="bg-white rounded-xl border p-5">
                     <div className="flex items-center justify-between mb-3">
@@ -329,26 +337,61 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage, assets, themedBoo
                 </div>
             )}
 
-            {/* ── 快速入口 ── */}
-            <div className="bg-white rounded-xl border p-5">
-                <p className="text-sm font-bold text-gray-700 mb-3">快速入口</p>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                    {([
-                        { label: '素材管理', icon: '📁', page: 'assets' as Page },
-                        { label: '生图记录', icon: '🎨', page: 'ai-generations' as Page },
-                        { label: '社区管理', icon: '👥', page: 'community' as Page },
-                        { label: '搜索管理', icon: '🔍', page: 'search' as Page },
-                        { label: '批量生图', icon: '🖼', page: 'batch-image-generation' as Page },
-                        { label: '用户管理', icon: '👤', page: 'user-management' as Page },
-                    ]).map(item => (
-                        <button key={item.page} onClick={() => setCurrentPage(item.page)}
-                            className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                            <span className="text-lg">{item.icon}</span>
-                            <span className="text-[11px] text-gray-600">{item.label}</span>
-                        </button>
-                    ))}
+            {/* ── 模型统计分析 ── */}
+            {!L && (
+                <div className="bg-white rounded-xl border p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <p className="text-sm font-bold text-gray-700">模型统计分析</p>
+                    </div>
+                    {modelStatsLoading ? (
+                        <div className="flex items-center justify-center py-10"><Spinner size="lg" /></div>
+                    ) : modelStats ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-blue-700">{modelStats.chat?.total || 0}</p>
+                                    <p className="text-[10px] text-blue-500 mt-0.5">聊天模型</p>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-purple-700">{modelStats.image?.total || 0}</p>
+                                    <p className="text-[10px] text-purple-500 mt-0.5">生图模型</p>
+                                </div>
+                                <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-emerald-700">{(modelStats.chat?.groups?.length || 0) + (modelStats.image?.groups?.length || 0)}</p>
+                                    <p className="text-[10px] text-emerald-500 mt-0.5">供应商</p>
+                                </div>
+                                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-amber-700">{modelStats.usage?.reduce((s: number, u: any) => s + u.total, 0) || 0}</p>
+                                    <p className="text-[10px] text-amber-500 mt-0.5">生图调用 · {rangeLabels[range]}</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <p className="text-xs text-gray-400 font-medium mb-3">聊天模型 · 按供应商分布</p>
+                                    {modelStats.chat?.groups?.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {modelStats.chat.groups.slice(0, 8).map((g: any) => (
+                                                <BarRow key={g.developer} label={g.developer} value={g.count} max={modelStats.chat.groups[0]?.count || 1} color="bg-blue-400" />
+                                            ))}
+                                        </div>
+                                    ) : <p className="text-gray-300 text-xs py-4 text-center">暂无数据</p>}
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-400 font-medium mb-3">生图模型 · 按供应商分布</p>
+                                    {modelStats.image?.groups?.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {modelStats.image.groups.slice(0, 8).map((g: any) => (
+                                                <BarRow key={g.developer} label={g.developer} value={g.count} max={modelStats.image.groups[0]?.count || 1} color="bg-purple-400" />
+                                            ))}
+                                        </div>
+                                    ) : <p className="text-gray-300 text-xs py-4 text-center">暂无数据</p>}
+                                </div>
+                            </div>
+                        </div>
+                    ) : <p className="text-gray-300 text-center py-10 text-sm">加载失败</p>}
                 </div>
-            </div>
+            )}
+
         </div>
     );
 };

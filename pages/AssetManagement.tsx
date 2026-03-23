@@ -915,6 +915,11 @@ const AssetDetailModal: React.FC<{
                 <div className="flex items-center gap-2 min-w-0">
                     <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-bold whitespace-nowrap ${TYPE_COLOR_MAP[asset.assetType] || 'bg-gray-100 text-gray-600'}`}>
                         {TYPE_LABEL_MAP[asset.assetType] || asset.assetType}
+                        {asset.assetType === 'Daily' && asset.id && /^\d{8}/.test(asset.id) && (
+                            <span className="ml-1 font-normal opacity-70">
+                                {asset.id.substring(0, 4)}-{asset.id.substring(4, 6)}-{asset.id.substring(6, 8)}
+                            </span>
+                        )}
                     </span>
                     <span className="text-gray-300">/</span>
                     <span className="text-base font-bold text-gray-800 truncate">{asset.id}</span>
@@ -1015,9 +1020,8 @@ const AssetDetailModal: React.FC<{
                         <div className="absolute bottom-4 right-4 bg-black/30 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">点击放大预览</div>
                     </div>
                     
+                    {hoverCreation && (
                     <div className="grid grid-cols-1 gap-3">
-                        {hoverCreation ? (
-                            /* hover 时显示用户作品信息 */
                             <div className="bg-gradient-to-br from-primary/5 to-blue-50 p-4 rounded-xl border border-primary/20 animate-fade-in-up space-y-3">
                                 <span className="text-[10px] uppercase font-black text-primary tracking-widest">用户作品信息</span>
                                 <div className="flex items-center gap-3">
@@ -1052,34 +1056,8 @@ const AssetDetailModal: React.FC<{
                                     </div>
                                 </div>
                             </div>
-                        ) : (
-                            /* 默认显示素材元数据 */
-                            <>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                    <span className="text-[10px] uppercase font-black text-gray-400 block mb-1.5 tracking-widest">图片 ID</span>
-                                    <span className="text-sm font-mono font-bold text-gray-800 break-all">{asset.id}</span>
-                                </div>
-                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                    <span className="text-[10px] uppercase font-black text-gray-400 block mb-1.5 tracking-widest">上传日期</span>
-                                    <span className="text-sm font-bold text-gray-800">{asset.uploadDate || '—'}</span>
-                                </div>
-                            </div>
-                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                <span className="text-[10px] uppercase font-black text-gray-400 block mb-1.5 tracking-widest">标签</span>
-                                {asset.tags && asset.tags.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5 mt-1">
-                                        {asset.tags.map((tag: string) => (
-                                            <span key={tag} className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-xs text-gray-600">{tag}</span>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <span className="text-sm text-gray-400 italic">无标签</span>
-                                )}
-                            </div>
-                            </>
-                        )}
                     </div>
+                    )}
 
                     {/* 搜索标签（从接口获取，可编辑） — 合并了原标签库区域 */}
                     <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border border-green-200">

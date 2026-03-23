@@ -2,7 +2,7 @@ import url from 'url';
 import { proxyHandler } from './handlers/proxy.js';
 import { healthHandler } from './handlers/health.js';
 import { imagenRecordsHandler, imagenStatsHandler, imagenFilterOptionsHandler } from './handlers/imagen.js';
-import { dashboardOverviewHandler } from './handlers/dashboard.js';
+import { dashboardOverviewHandler, dashboardModelStatsHandler } from './handlers/dashboard.js';
 import { userReportLoadHandler, userReportUpdateHandler } from './handlers/userReport.js';
 import { systemDetectionLoadHandler, systemDetectionUpdateHandler } from './handlers/systemDetection.js';
 import { historyHandler } from './handlers/history.js';
@@ -20,6 +20,7 @@ const routes = {
   'GET /health': healthHandler,
   'GET /proxy': proxyHandler,
   'GET /api/dashboard/overview': dashboardOverviewHandler,
+  'GET /api/dashboard/model-stats': dashboardModelStatsHandler,
   'POST /api/batch-download': batchDownloadHandler,
   'POST /api/imagen/records': imagenRecordsHandler,
   'GET /api/imagen/stats': imagenStatsHandler,

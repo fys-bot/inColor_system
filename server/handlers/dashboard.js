@@ -1,7 +1,11 @@
 import { collection, query, limit, orderBy, getDocs, where, getCountFromServer } from 'firebase/firestore';
 import { ref, get } from 'firebase/database';
+import { execSync } from 'child_process';
 import { firestore, db } from '../config/firebase.js';
 import { success, serverError } from '../utils/response.js';
+
+const AI_GW_BASE = 'https://ai-gateway.eyewind.com';
+const AI_GW_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3Njk1MDI5MTMsImV4cCI6MTg2NDExMDkxMywiYXBwaWQiOiJkZXYiLCJ0eXAiOiJhcGkifQ.SMnJiua1U_Z7VYpqG9yO-DAGox4nMQZsW53TeM3Ea3s';
 
 /**
  * 仪表盘概览数据
@@ -264,5 +268,100 @@ async function getSearchData() {
   } catch (e) {
     console.error('[Dashboard] 搜索词查询失败:', e);
     return { hotSearchTerm: null, topSearchTerms: [], scarceTerms: [], searchDataDate: '', totalSearchTerms: 0 };
+  }
+}
+
+
+/**
+ * 模型统计分析
+ * GET /api/dashboard/model-stats?range=1d|7d|30d
+ * 返回 ai-gateway 可用模型列表（按 Chat/Image 分类、按 developer 分组）+ imagen 使用统计
+ */
+export async function dashboardModelStatsHandler(req, res) {
+  try {
+    const range = req.query?.range || '7d';
+    const days = range === '30d' ? 30 : range === '7d' ? 7 : 1;
+    const now = new Date();
+    const startTime = new Date(now);
+    startTime.setDate(startTime.getDate() - days);
+    startTime.setHours(0, 0, 0, 0);
+
+    // 并行：拉 gateway 模型列表 + 查 imagen 使用数据
+    const [gatewayModels, imagenUsage] = await Promise.all([
+      fetchGatewayModels(),
+      getImagenModelUsage(startTime.getTime()),
+    ]);
+
+    // 按 type 分组
+    const chatModels = gatewayModels.filter(m => m.type === 'Chat');
+    const imageModels = gatewayModels.filter(m => m.type === 'Image');
+
+    // 按 developer 分组（字段在 info.developer）
+    const groupByDev = (list) => {
+      const groups = {};
+      list.forEach(m => {
+        const dev = (m.info && m.info.developer) || m.developer || m.provider || (m.id && m.id.includes('/') ? m.id.substring(0, m.id.indexOf('/')) : 'Other');
+        if (!groups[dev]) groups[dev] = [];
+        groups[dev].push({ id: m.id, developer: dev, description: (m.info && m.info.description) || m.description || '' });
+      });
+      return Object.entries(groups)
+        .map(([developer, models]) => ({ developer, count: models.length, models }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    success(res, {
+      chat: { total: chatModels.length, groups: groupByDev(chatModels) },
+      image: { total: imageModels.length, groups: groupByDev(imageModels) },
+      usage: imagenUsage,
+    });
+  } catch (err) {
+    console.error('[Dashboard] model-stats 失败:', err);
+    serverError(res, err.message);
+  }
+}
+
+/** 从 ai-gateway 拉取全部模型 */
+async function fetchGatewayModels() {
+  try {
+    const result = execSync(
+      `curl -s --max-time 15 -H "Authorization: Bearer ${AI_GW_TOKEN}" "${AI_GW_BASE}/v1/models"`,
+      { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    );
+    const parsed = JSON.parse(result);
+    return parsed.data || [];
+  } catch (e) {
+    console.error('[Dashboard] gateway models 失败:', e.message);
+    return [];
+  }
+}
+
+/** 从 imagen 集合统计各模型使用量 */
+async function getImagenModelUsage(startTime) {
+  try {
+    const imagenRef = collection(firestore, 'imagen');
+    const q = query(imagenRef, where('createdAt', '>=', startTime), orderBy('createdAt', 'desc'), limit(5000));
+    const snapshot = await getDocs(q);
+
+    const modelStats = {};
+    snapshot.docs.forEach(doc => {
+      const d = doc.data();
+      const model = d.model || 'unknown';
+      if (!modelStats[model]) modelStats[model] = { total: 0, styles: new Set(), platforms: new Set() };
+      modelStats[model].total++;
+      if (d.style) modelStats[model].styles.add(d.style);
+      if (d.platform) modelStats[model].platforms.add(d.platform);
+    });
+
+    return Object.entries(modelStats)
+      .map(([name, s]) => ({
+        name,
+        total: s.total,
+        styles: s.styles.size,
+        platforms: [...s.platforms],
+      }))
+      .sort((a, b) => b.total - a.total);
+  } catch (e) {
+    console.error('[Dashboard] imagen usage 失败:', e.message);
+    return [];
   }
 }
